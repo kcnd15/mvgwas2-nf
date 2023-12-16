@@ -1,0 +1,15 @@
+clean
+result
+work
+singularity
+docker/.docker
+.nextflow*
+trace*
+*log
+
+data
+*.tmp
+
+.Rproj.user
+.Rhistory
+*.Rproj
