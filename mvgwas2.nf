@@ -66,11 +66,11 @@ params.t = 'none' // phenotype transformation: none, sqrt, log
 params.i = 'none' // test for interaction with a covariate: none, <covariate>
 params.ng = 10 // minimum number of individuals per genotype group
 
-params.out = 'mvgwas.tsv'
+params.manta_out = 'mvgwas.tsv'
 
 // GEMMA
 params.maf = 0.01 // MAF filter
-// params.out = 'gemma.tsv'
+params.gemma_out = 'gemma.tsv'
 params.threads = 1 // No. of threads
 
 
@@ -104,11 +104,12 @@ if (params.help) {
     log.info " --t TRANSFOMATION           phenotype transformation: none, sqrt, log (default: $params.t)"
     log.info " --i INTERACTION             test for interaction with a covariate: none, <covariate> (default: $params.i)"
     log.info " --ng INDIVIDUALS/GENOTYPE   minimum number of individuals per genotype group (default: $params.ng)"
-    log.info " --out OUTPUT                output file (default: $params.out)"
+    log.info " --manta_out OUTPUT          output file (default: $params.manta_out)"
     log.info ''
     log.info 'Parameters for GEMMA:'
     log.info " --maf MAF                   MAF filter (default: ${params.maf}"
     log.info " --threads THREADS           number of threads (default: ${params.threads})"
+    log.info " --gemma_out OUTPUT          output file prefix (default: ${params.gemma_out})"
     exit(1)
 }
 
@@ -163,7 +164,7 @@ if ("manta" in params.methodsList) {
     log.info "Phenotype transformation     : ${params.t}"
     log.info "Interaction                  : ${params.i}"
     log.info "Individuals/genotype         : ${params.ng}" 
-    log.info "Output file                  : ${params.out}"
+    log.info "Output file                  : ${params.manta_out}"
     log.info ''
 }
 
@@ -173,6 +174,7 @@ if ("gemma" in params.methodsList) {
     log.info '------------------'
     log.info "MAF                          : ${params.maf}"
     log.info "Threads                      : ${params.threads}"
+    log.info "Output file                  : ${params.gemma_out}"
     log.info ''
 }
 
@@ -207,6 +209,10 @@ workflow {
 
         // Compute kinship
         tuple_eigen = gemma_p2_kinship(tuple_files)
+
+        // // Test for association between phenotypes and genetic variants
+        // and collect summary statistics
+        gemma_p3_test_association(tuple_files, tuple_eigen, chunks) | gemma_p4_collect_summary_statistics
     }
 
     // specific processing steps for MTAR
@@ -257,7 +263,7 @@ process common_p0_split_genotype {
 // MANTA processing
 // ------------------------------------------------------------------------------
 
-// Manta Step 1: Preprocess phenotype and covariate data
+// MANTA Step 1: Preprocess phenotype and covariate data
 process manta_p1_preprocess_pheno_cov {
   
     debug params.debug_flag
@@ -374,7 +380,7 @@ process manta_p3_collect_summary_statistics {
 // GEMMA processing
 // ------------------------------------------------------------------------------
 
-// Preprocess genotype and phenotype data
+// GEMMA Step 1: Preprocess genotype and phenotype data
 process gemma_p1_preprocess_geno_pheno {
 
     cpus params.threads
@@ -396,7 +402,7 @@ process gemma_p1_preprocess_geno_pheno {
     """
 }
 
-// Compute kinship, obtain kinship matrix
+// GEMMA Step 2: Compute kinship, obtain kinship matrix
 process gemma_p2_kinship {
 
     cpus params.threads
@@ -416,6 +422,75 @@ process gemma_p2_kinship {
     plink2 --bfile \$prefix --extract plink2.prune.in --out geno.pruned --make-bed --threads ${params.threads}
     gemma -gk 2 -bfile geno.pruned -outdir . -o kinship
     gemma -bfile geno.pruned -k kinship.sXX.txt -eigen -outdir . -o kinship.sXX
+    """
+}
+
+// GWAS: testing (GEMMA)
+// GEMMA Step 3: Test for association between phenotypes and genetic variants
+
+process gemma_p3_test_association {
+
+    cpus params.threads
+
+    input:
+    tuple file(bed), file(bim), file(fam) // from geno_ch
+    tuple file(kinship_d), file(kinship_u) // from kinship_ch
+    each file(chunk) // from chunks_ch
+
+    output:
+    file('gemma.0*.assoc.txt') // into sstats_ch
+
+    script:
+    """
+    export OPENBLAS_NUM_THREADS=${params.threads}
+    pids=\$(seq \$(echo \$(awk '{print NF}' $fam | head -1) - 5 | bc -l))
+    chunknb=\$(basename $chunk | sed 's/chunk//')
+
+    if [[ \$(cut -f1 $chunk | sort | uniq -c | wc -l) -ge 2 ]]; then
+        k=1
+        cut -f1 $chunk | sort | uniq | while read chr; do
+            paste <(grep -P "^\$chr\t" $chunk | head -1) <(grep -P "^\$chr\t" $chunk | tail -1 | cut -f2) > region
+            plink2 -bfile geno --extract bed1 region --make-bed --out geno.ss --threads ${params.threads}
+            paste <(cut -f1-5 geno.ss.fam) <(cut -f1-5 --complement geno.fam) > tmpfile; mv tmpfile geno.ss.fam
+            (timeout 120 gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.k\$k -maf ${params.maf} &> STATUS || exit 0)
+            if [[ \$(grep ERROR STATUS) ]]; then
+                touch gemma.k\$k.assoc.txt
+            else
+                gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.k\$k -maf ${params.maf}
+            fi
+            ((k++))
+        done
+        cat gemma.k*.assoc.txt > gemma.\${chunknb}.assoc.txt        
+    else
+        paste <(head -1 $chunk) <(tail -1 $chunk | cut -f2) > region
+        plink2 -bfile geno --extract bed1 region --make-bed --out geno.ss --threads ${params.threads}
+        paste <(cut -f1-5 geno.ss.fam) <(cut -f1-5 --complement geno.fam) > tmpfile; mv tmpfile geno.ss.fam
+        (timeout 120 gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.\${chunknb} -maf ${params.maf} &> STATUS || exit 0)
+        if [[ \$(grep ERROR STATUS) ]]; then
+            touch gemma.\${chunknb}.assoc.txt
+        else
+            gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.\${chunknb} -maf ${params.maf}
+        fi
+    fi
+    """
+}
+
+// GEMMA Step 4: Collect summary statistics
+
+process gemma_p4_collect_summary_statistics {
+
+    publishDir "${params.dir}", mode: 'copy'
+
+    input:
+    file(out) // from pub_ch
+
+    output:
+    file(out) // into end_ch
+
+    script:
+    """
+    head -1 $out > header
+    grep -v n_miss $out > tmpfile; cat header tmpfile > $out
     """
 }
 
