@@ -4,7 +4,7 @@
  * Copyright (c) 2021, Diego Garrido-Martín
  *
  * This file is part of 'mvgwas-nf':
- * A Nextflow pipeline for multivariate GWAS using MANTA
+ * A Nextflow pipeline for multivariate GWAS using various methods
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@
  */
 
 // general parameters
-debug_flag = true // set to true for additional logging
+params.debug_flag = false // set to true for additional logging
 
 // workflow_conditional2.nf
 // run with process provided on the command line:
@@ -40,7 +40,7 @@ params.methods = null
 // convert process string to a list
 params.methodsList = params.methods?.split(',') as List
 
-if (debug_flag)
+if (params.debug_flag)
 {
     println "methodsList: " + params.methodsList
 }
@@ -50,21 +50,28 @@ all_methods_list = ["manta","gemma","mtar","mostest"]
 
 // Define common method parameters
 params.help = false
+params.l = 500 // No. of variants/chunk 
 
 params.geno = null
-params.l = 500
-
 params.pheno = null
+
+params.dir = 'result' // output directory
 
 
 // Define method specific parameters
 // MANTA
+
 params.cov = null
-params.t = 'none'
-params.i = 'none'
-params.ng = 10
-params.dir = 'result'
+params.t = 'none' // phenotype transformation: none, sqrt, log
+params.i = 'none' // test for interaction with a covariate: none, <covariate>
+params.ng = 10 // minimum number of individuals per genotype group
+
 params.out = 'mvgwas.tsv'
+
+// GEMMA
+params.maf = 0.01 // MAF filter
+// params.out = 'gemma.tsv'
+params.threads = 1 // No. of threads
 
 
 // Print usage
@@ -74,6 +81,7 @@ if (params.help) {
     log.info 'mvgwas2-nf: A pipeline for multivariate Genome-Wide Association Studies'
     log.info '========================================================================'
     log.info 'Performs multi-trait GWAS using various methods:'
+    log.info ''
     log.info ' - MANTA (https://github.com/dgarrimar/manta)'
     log.info ' - GEMMA'
     log.info ' - MTAR'
@@ -86,8 +94,9 @@ if (params.help) {
     log.info ''
     log.info 'Common parameters:'
     log.info ' --methods "manta,gemma,mtar,mostest" select one or more GWAS methods'
-    log.info ' --pheno PHENOTYPES          phenotype file'
+    log.info ' --pheno PHENOTYPES          (covariate-adjusted) phenotype file'
     log.info ' --geno GENOTYPES            indexed genotype VCF file'
+    log.info " --dir DIRECTORY             output directory (default: $params.dir)"
     log.info " --l VARIANTS/CHUNK          variants tested per chunk (default: $params.l)"
     log.info ''
     log.info 'Parameters for MANTA:'
@@ -95,9 +104,11 @@ if (params.help) {
     log.info " --t TRANSFOMATION           phenotype transformation: none, sqrt, log (default: $params.t)"
     log.info " --i INTERACTION             test for interaction with a covariate: none, <covariate> (default: $params.i)"
     log.info " --ng INDIVIDUALS/GENOTYPE   minimum number of individuals per genotype group (default: $params.ng)"
-    log.info " --dir DIRECTORY             output directory (default: $params.dir)"
     log.info " --out OUTPUT                output file (default: $params.out)"
     log.info ''
+    log.info 'Parameters for GEMMA:'
+    log.info " --maf MAF                   MAF filter (default: ${params.maf}"
+    log.info " --threads THREADS           number of threads (default: ${params.threads})"
     exit(1)
 }
 
@@ -140,6 +151,7 @@ log.info '------------------'
 log.info "GWAS methods                 : ${params.methodsList}"
 log.info "Phenotype data               : ${params.pheno}"
 log.info "Genotype data                : ${params.geno}"
+log.info "Output directory             : ${params.dir}"
 log.info ''
 
 if ("manta" in params.methodsList) {
@@ -151,8 +163,16 @@ if ("manta" in params.methodsList) {
     log.info "Phenotype transformation     : ${params.t}"
     log.info "Interaction                  : ${params.i}"
     log.info "Individuals/genotype         : ${params.ng}" 
-    log.info "Output directory             : ${params.dir}"
     log.info "Output file                  : ${params.out}"
+    log.info ''
+}
+
+if ("gemma" in params.methodsList) {
+
+    log.info 'GEMMA parameters'
+    log.info '------------------'
+    log.info "MAF                          : ${params.maf}"
+    log.info "Threads                      : ${params.threads}"
     log.info ''
 }
 
@@ -181,8 +201,12 @@ workflow {
     
     // specific processing steps for GEMMA
     if ("gemma" in params.methodsList) {
-        gemma_p1()
-        gemma_p2()
+
+        // Preprocess genotype and phenotype data
+        tuple_files = gemma_p1_preprocess_geno_pheno(fileGenoVcf, filePheno)
+
+        // Compute kinship
+        tuple_eigen = gemma_p2_kinship(tuple_files)
     }
 
     // specific processing steps for MTAR
@@ -205,7 +229,7 @@ workflow {
 // Split genotype VCF file
 process common_p0_split_genotype {
   
-  debug debug_flag 
+  debug params.debug_flag 
   
   input:
   file(vcf) // from file(params.geno)
@@ -216,7 +240,7 @@ process common_p0_split_genotype {
   
   script:
 
-  if (debug_flag) {
+  if (params.debug_flag) {
     log.info "vcf-file: ${vcf}"  // e.g. eg.genotypes.vcf.gz
     log.info "tbi-file: ${index}"
     log.info "params.l: ${params.l}" // e.g. 500
@@ -236,7 +260,7 @@ process common_p0_split_genotype {
 // Manta Step 1: Preprocess phenotype and covariate data
 process manta_p1_preprocess_pheno_cov {
   
-    debug debug_flag
+    debug params.debug_flag
     
     input:
     path pheno_file
@@ -257,7 +281,7 @@ process manta_p1_preprocess_pheno_cov {
 // MANTA Step 2: Test for association between phenotypes and genetic variants using MANTA
 process manta_p2_mvgwas_manta {
   
-    debug debug_flag 
+    debug params.debug_flag 
 
     input:
 
@@ -272,7 +296,7 @@ process manta_p2_mvgwas_manta {
     
     script:
     
-    if (debug_flag) {
+    if (params.debug_flag) {
       log.info "logging processing of file ${chunk}"
     }
     
@@ -318,7 +342,7 @@ process manta_p3_collect_summary_statistics {
   
     // creates an output text file containing the multi-trait GWAS summary statistics
 
-    debug debug_flag
+    debug params.debug_flag
     publishDir "${params.dir}", mode: 'copy'     
 
     input:
@@ -329,7 +353,7 @@ process manta_p3_collect_summary_statistics {
 
     script:
     
-    if (debug_flag) {
+    if (params.debug_flag) {
       log.info("process end")
       log.info("params.i: ${params.i}")
       log.info("input file: ${out}")
@@ -350,14 +374,49 @@ process manta_p3_collect_summary_statistics {
 // GEMMA processing
 // ------------------------------------------------------------------------------
 
-process gemma_p1 {
-    exec:
-    println "this is process gemma_p1"
+// Preprocess genotype and phenotype data
+process gemma_p1_preprocess_geno_pheno {
+
+    cpus params.threads
+
+    input:
+    path vcf // file vcf from file(params.geno)    
+    path pheno // file pheno from file(params.pheno)
+
+    output:
+    tuple file("geno.bed"), file("geno.bim"), file("geno.fam") // into geno_ch
+
+    script:
+    """
+    comm -12 <(bcftools view -h $vcf | grep CHROM | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
+    plink2 --vcf $vcf --keep keep.txt --make-bed --out geno --threads ${params.threads} 
+    awk '{print int(NR)"\t"\$0}' <(cut -f2 geno.fam) > idx
+    join -t \$'\t' -1 2 -2 1 <(sort -k2,2 idx) <(sort -k1,1 $pheno) | sort -k2,2n | cut -f1,2 --complement > pheno.tmp
+    paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv tmpfile geno.fam
+    """
 }
 
-process gemma_p2 {
-    exec:
-    println "this is process gemma_p2"
+// Compute kinship, obtain kinship matrix
+process gemma_p2_kinship {
+
+    cpus params.threads
+
+    input:
+    tuple file(bed), file(bim), file(fam) // from geno_ch
+
+    output:
+    tuple file("kinship.sXX.eigenD.txt"), file("kinship.sXX.eigenU.txt") // into kinship_ch
+
+    script:
+    """
+    # Compute kinship
+    export OPENBLAS_NUM_THREADS=${params.threads}
+    prefix=\$(basename $bed | sed 's/.bed//')
+    plink2 --bfile \$prefix --maf ${params.maf} --indep-pairwise 50 5 0.8 --threads ${params.threads}
+    plink2 --bfile \$prefix --extract plink2.prune.in --out geno.pruned --make-bed --threads ${params.threads}
+    gemma -gk 2 -bfile geno.pruned -outdir . -o kinship
+    gemma -bfile geno.pruned -k kinship.sXX.txt -eigen -outdir . -o kinship.sXX
+    """
 }
 
 // ------------------------------------------------------------------------------
