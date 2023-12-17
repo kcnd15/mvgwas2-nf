@@ -28,7 +28,7 @@
  */
 
 // general parameters
-debug_flag = false // set to true for additional logging
+debug_flag = true // set to true for additional logging
 
 // workflow_conditional2.nf
 // run with process provided on the command line:
@@ -124,21 +124,6 @@ if (!params.pheno) {
     exit 1, "Genotype not specified."
 }
 
-// Print parameter selection
-log.info ''
-log.info 'Parameters'
-log.info '------------------'
-log.info "Phenotype data               : ${params.pheno}"
-log.info "Genotype data                : ${params.geno}"
-log.info "Covariates                   : ${params.cov}"
-log.info "Variants/chunk               : ${params.l}"
-log.info "Phenotype transformation     : ${params.t}"
-log.info "Interaction                  : ${params.i}"
-log.info "Individuals/genotype         : ${params.ng}" 
-log.info "Output directory             : ${params.dir}"
-log.info "Output file                  : ${params.out}"
-log.info ''
-
 // parameters required for specific methods
 if ("manta" in params.methodsList) 
 {
@@ -148,10 +133,31 @@ if ("manta" in params.methodsList)
     }
 }
 
+// Print parameter selection
+log.info ''
+log.info 'General parameters'
+log.info '------------------'
+log.info "GWAS methods                 : ${params.methodsList}"
+log.info "Phenotype data               : ${params.pheno}"
+log.info "Genotype data                : ${params.geno}"
+log.info ''
+
+if ("manta" in params.methodsList) {
+
+    log.info 'MANTA parameters'
+    log.info '------------------'
+    log.info "Covariates                   : ${params.cov}"
+    log.info "Variants/chunk               : ${params.l}"
+    log.info "Phenotype transformation     : ${params.t}"
+    log.info "Interaction                  : ${params.i}"
+    log.info "Individuals/genotype         : ${params.ng}" 
+    log.info "Output directory             : ${params.dir}"
+    log.info "Output file                  : ${params.out}"
+    log.info ''
+}
+
 // main workflow
 workflow {
-
-    println "methods to be processed: " + params.methods
 
     // input files
     fileGenoVcf = Channel.fromPath(params.geno)
@@ -161,20 +167,16 @@ workflow {
     fileCov = Channel.fromPath(params.cov)
 
     // common processing step
-    common_p0()
-
-    if ("split" in params.methodsList) {
-        chunks = common_p0_split_genotype(fileGenoVcf, fileGenoTbi) | flatten
-    }
-
+    chunks = common_p0_split_genotype(fileGenoVcf, fileGenoTbi) | flatten
 
     // specific processing steps for Manta
     if ("manta" in params.methodsList) {
-        manta_p1()
-        manta_p2()
 
         // preprocess phenotype and covariate data
         tuple_files = manta_p1_preprocess_pheno_cov(filePheno, fileCov, fileGenoVcf)
+
+        // perform multivariate GWAS analysis using MANTA and output results
+        manta_p2_mvgwas_manta(tuple_files, fileGenoVcf, fileGenoTbi, chunks) | manta_p3_collect_summary_statistics
     }
     
     // specific processing steps for GEMMA
@@ -196,72 +198,9 @@ workflow {
     }
 }
 
-process common_p0 {
-    exec:
-    println "this is process common_p0"
-}
-
-process manta_p1 {
-    exec:
-    println "this is process manta_p1"
-}
-
-process manta_p2 {
-    exec:
-    println "this is process manta_p2"
-}
-
-// Manta Step 1: Preprocess phenotype and covariate data
-process manta_p1_preprocess_pheno_cov {
-  
-    debug debug_flag
-    
-    input:
-    path pheno_file
-    path cov_file
-    path vcf_file
-    
-    output:
-    tuple file("pheno_preproc.tsv.gz"), file("cov_preproc.tsv.gz")
-    
-    script:
-    """
-    echo "preprocessing files" $pheno_file $cov_file $vcf_file
-    echo "preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose"
-    ${moduleDir}/bin/manta/preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose
-    """
-}
-
-process gemma_p1 {
-    exec:
-    println "this is process gemma_p1"
-}
-
-process gemma_p2 {
-    exec:
-    println "this is process gemma_p2"
-}
-
-process mtar_p1 {
-    exec:
-    println "this is process mtar_p1"
-}
-
-process mtar_p2 {
-    exec:
-    println "this is process mtar_p2"
-}
-
-process mostest_p1 {
-    exec:
-    println "this is process mostest_p1"
-}
-
-process mostest_p2 {
-    exec:
-    println "this is process mostest_p2"
-}
-
+// ------------------------------------------------------------------------------
+// common processing
+// ------------------------------------------------------------------------------
 
 // Split genotype VCF file
 process common_p0_split_genotype {
@@ -289,3 +228,163 @@ process common_p0_split_genotype {
   split -d -a 10 -l ${params.l} positions chunk
   """
 }
+
+// ------------------------------------------------------------------------------
+// MANTA processing
+// ------------------------------------------------------------------------------
+
+// Manta Step 1: Preprocess phenotype and covariate data
+process manta_p1_preprocess_pheno_cov {
+  
+    debug debug_flag
+    
+    input:
+    path pheno_file
+    path cov_file
+    path vcf_file
+    
+    output:
+    tuple file("pheno_preproc.tsv.gz"), file("cov_preproc.tsv.gz")
+    
+    script:
+    """
+    echo "preprocessing files" $pheno_file $cov_file $vcf_file
+    echo "preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose"
+    ${moduleDir}/bin/manta/preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose
+    """
+}
+
+// MANTA Step 2: Test for association between phenotypes and genetic variants using MANTA
+process manta_p2_mvgwas_manta {
+  
+    debug debug_flag 
+
+    input:
+
+    tuple file(pheno), file(cov) // from preproc_ch
+    file(vcf) // from file(params.geno)
+    file(index) // from file("${params.geno}.tbi")
+    each path(chunk) // file(chunk) // from chunks_ch
+
+    output:
+
+    path('sstats.*.txt') // optional true // into sstats_ch
+    
+    script:
+    
+    if (debug_flag) {
+      log.info "logging processing of file ${chunk}"
+    }
+    
+    """
+    echo "processing file " $chunk
+    
+    chunknb=\$(basename $chunk | sed 's/chunk//')
+    echo "chunknb:" \$chunknb
+    
+    # check for number of chromosomes
+    if [[ \$(cut -f1 $chunk | sort | uniq -c | wc -l) -ge 2 ]]; then
+        echo "entering if..."
+        k=1
+        cut -f1 $chunk | sort | uniq | while read chr; do
+          region=\$(paste <(grep -P "^\$chr\t" $chunk | head -n 1) <(grep -P "^\$chr\t" $chunk | tail -n 1 | cut -f2) | sed 's/\t/:/' | sed 's/\t/-/')
+        
+          echo "if region: [" \$region "]"
+          echo "--output" sstats.\$k.tmp
+          echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
+        
+          ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose 
+        
+          ((k++))
+      done
+      cat sstats.*.tmp > sstats.\${chunknb}.txt
+    else
+        # only 1 chromosome
+        echo "entering else..."
+        
+        region=\$(paste <(head -n 1 $chunk) <(tail -n 1 $chunk | cut -f2) | sed 's/\t/:/' | sed 's/\t/-/')
+        
+        echo "else region: [" \$region "]"
+        echo "--output" sstats.\${chunknb}.txt
+        echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
+        
+        ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose
+    fi
+    """
+}
+
+// MANTA step 3: collect resulting summary statistics
+process manta_p3_collect_summary_statistics {
+  
+    // creates an output text file containing the multi-trait GWAS summary statistics
+
+    debug debug_flag
+    publishDir "${params.dir}", mode: 'copy'     
+
+    input:
+    file(out) // from pub_ch
+
+    output:
+    file(out) // into end_ch
+
+    script:
+    
+    if (debug_flag) {
+      log.info("process end")
+      log.info("params.i: ${params.i}")
+      log.info("input file: ${out}")
+    }
+    
+    if (params.i == 'none')
+    """
+    sed -i "1 s/^/CHR\tPOS\tID\tREF\tALT\tF\tR2\tP\\n/" ${out}
+    """
+    else
+    """
+    sed -i "1 s/^/CHR\tPOS\tID\tREF\tALT\tF($params.i)\tF(GT)\tF(${params.i}:GT)\tR2($params.i)\tR2(GT)\tR2(${params.i}:GT)\tP($params.i)\tP(GT)\tP(${params.i}:GT)\\n/" ${out}
+    """
+}
+
+
+// ------------------------------------------------------------------------------
+// GEMMA processing
+// ------------------------------------------------------------------------------
+
+process gemma_p1 {
+    exec:
+    println "this is process gemma_p1"
+}
+
+process gemma_p2 {
+    exec:
+    println "this is process gemma_p2"
+}
+
+// ------------------------------------------------------------------------------
+// MTAR processing
+// ------------------------------------------------------------------------------
+
+process mtar_p1 {
+    exec:
+    println "this is process mtar_p1"
+}
+
+process mtar_p2 {
+    exec:
+    println "this is process mtar_p2"
+}
+
+// ------------------------------------------------------------------------------
+// MOSTest processing
+// ------------------------------------------------------------------------------
+
+process mostest_p1 {
+    exec:
+    println "this is process mostest_p1"
+}
+
+process mostest_p2 {
+    exec:
+    println "this is process mostest_p2"
+}
+
