@@ -48,8 +48,12 @@ debug_flag = false // set to true for additional logging
 params.geno = null
 params.l = 500
 
+params.pheno = null
+
+
 // Define method specific parameters
-// ...
+// MANTA
+params.cov = null
 
 
 // main workflow
@@ -61,6 +65,9 @@ workflow {
     // input files
     fileGenoVcf = Channel.fromPath(params.geno)
     fileGenoTbi = Channel.fromPath("${params.geno}.tbi")
+    filePheno = Channel.fromPath(params.pheno)
+
+    fileCov = Channel.fromPath(params.cov)
 
     // common processing step
     common_p0()
@@ -74,6 +81,9 @@ workflow {
     if ("manta" in params.methodsList) {
         manta_p1()
         manta_p2()
+
+        // preprocess phenotype and covariate data
+        tuple_files = manta_p1_preprocess_pheno_cov(filePheno, fileCov, fileGenoVcf)
     }
     
     if ("gemma" in params.methodsList) {
@@ -95,6 +105,27 @@ process manta_p1 {
 process manta_p2 {
     exec:
     println "this is process manta_p2"
+}
+
+// Manta Step 1: Preprocess phenotype and covariate data
+process manta_p1_preprocess_pheno_cov {
+  
+    debug debug_flag
+    
+    input:
+    path pheno_file
+    path cov_file
+    path vcf_file
+    
+    output:
+    tuple file("pheno_preproc.tsv.gz"), file("cov_preproc.tsv.gz")
+    
+    script:
+    """
+    echo "preprocessing files" $pheno_file $cov_file $vcf_file
+    echo "preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose"
+    ${moduleDir}/bin/manta/preprocess.R --phenotypes $pheno_file --covariates $cov_file --genotypes $vcf_file --out_pheno pheno_preproc.tsv.gz --out_cov cov_preproc.tsv.gz --verbose
+    """
 }
 
 process gemma_p1 {
