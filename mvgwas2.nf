@@ -217,8 +217,9 @@ workflow {
 
     // specific processing steps for MTAR
     if ("mtar" in params.methodsList) {
-        mtar_p1()
-        mtar_p2()
+        mtar_p1_prepare_summary_statistics()
+        mtar_p2_calculate_cov()
+        mtar_p3_run_mtar()
     }
 
     // specific processing steps for MOSTEST
@@ -498,14 +499,30 @@ process gemma_p4_collect_summary_statistics {
 // MTAR processing
 // ------------------------------------------------------------------------------
 
-process mtar_p1 {
-    exec:
-    println "this is process mtar_p1"
+// MTAR Step 1: Prepare Summary Statistics for Multiple Traits
+process mtar_p1_prepare_summary_statistics {
+  
+    debug params.debug_flag
+
+    script:
+    
+    log.info("MTAR Step 1: Prepare Summary Statistics for Multiple Traits")
+    
+    """
+    ${moduleDir}/bin/mtar/prepareSumStat.R -c C -t T -g G
+    """
 }
 
-process mtar_p2 {
+// MTAR Step 2: Calculate Covariances of Z-scores between Traits from Overlapping Samples
+process mtar_p2_calculate_cov {
     exec:
-    println "this is process mtar_p2"
+    println "Step 2: Calculate Covariances of Z-scores"
+}
+
+// MTAR Step 3. Run Multi-Traits Rare-Variant Association Tests (MTAR)
+process mtar_p3_run_mtar {
+    exec:
+    println "Step 3. Run MTAR"
 }
 
 // ------------------------------------------------------------------------------

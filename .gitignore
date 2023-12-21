@@ -7,9 +7,13 @@ docker/.docker
 trace*
 *log
 
+# exclude data
 data
 *.tmp
 
+# exclude R files / directories
 .Rproj.user
 .Rhistory
+.RData
 *.Rproj
+
