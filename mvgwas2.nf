@@ -73,6 +73,12 @@ params.maf = 0.01 // MAF filter
 params.gemma_out = 'gemma.tsv'
 params.threads = 1 // No. of threads
 
+// MTAR
+params.mtar_cov = null
+params.datadir = '.'
+
+// MOSTest
+
 
 // Print usage
 
@@ -107,9 +113,14 @@ if (params.help) {
     log.info " --manta_out OUTPUT          output file (default: $params.manta_out)"
     log.info ''
     log.info 'Parameters for GEMMA:'
-    log.info " --maf MAF                   MAF filter (default: ${params.maf}"
+    log.info " --maf MAF                   MAF filter (default: ${params.maf})"
     log.info " --threads THREADS           number of threads (default: ${params.threads})"
     log.info " --gemma_out OUTPUT          output file prefix (default: ${params.gemma_out})"
+    log.info ''
+    log.info 'Parameters for MTAR:'
+    log.info " --cov COVARIATES            covariate file"
+    log.info " --datadir dir               data directory (default: ${params.datadir})"
+    
     exit(1)
 }
 
@@ -217,7 +228,7 @@ workflow {
 
     // specific processing steps for MTAR
     if ("mtar" in params.methodsList) {
-        mtar_p1_prepare_summary_statistics()
+        mtar_p1_prepare_summary_statistics(filePheno, fileCov, fileGenoVcf)
         mtar_p2_calculate_cov()
         mtar_p3_run_mtar()
     }
@@ -503,13 +514,18 @@ process gemma_p4_collect_summary_statistics {
 process mtar_p1_prepare_summary_statistics {
   
     debug params.debug_flag
+    
+    input:
+    path pheno_file
+    path cov_file
+    path vcf_file
 
     script:
     
     log.info("MTAR Step 1: Prepare Summary Statistics for Multiple Traits")
     
     """
-    ${moduleDir}/bin/mtar/prepareSumStat.R -c C -t T -g G
+    ${moduleDir}/bin/mtar/prepareSumStat.R -d ${params.datadir} -c $cov_file -t $pheno_file -g $vcf_file
     """
 }
 
