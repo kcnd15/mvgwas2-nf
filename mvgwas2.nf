@@ -228,7 +228,12 @@ workflow {
 
     // specific processing steps for MTAR
     if ("mtar" in params.methodsList) {
+      
+        // preprocess phenotype and covariate data
+        tuple_files = manta_p1_preprocess_pheno_cov(filePheno, fileCov, fileGenoVcf)
+      
         mtar_p1_prepare_summary_statistics(filePheno, fileCov, fileGenoVcf)
+
         mtar_p2_calculate_cov()
         mtar_p3_run_mtar()
     }
@@ -522,10 +527,20 @@ process mtar_p1_prepare_summary_statistics {
 
     script:
     
-    log.info("MTAR Step 1: Prepare Summary Statistics for Multiple Traits")
+    log.info("mtar_p1_prepare_summary_statistics - MTAR Step 1: Prepare Summary Statistics for Multiple Traits")
+    log.info("pheno_file: ${pheno_file}")
+    log.info("cov_file: ${cov_file}")
+    log.info("vcf_file: ${vcf_file}")
     
     """
-    ${moduleDir}/bin/mtar/prepareSumStat.R -d ${params.datadir} -c $cov_file -t $pheno_file -g $vcf_file
+    # generate PLINK 1.9 files
+    plink --vcf ${vcf_file} --out genotypes_plink1
+    
+    # generate Genotype matrix
+    plink --bfile genotypes_plink1 --recode A --out genotypes_plink1_rA
+
+    # MTAR prepare summary statistics
+    ${moduleDir}/bin/mtar/prepareSumStat.R -d ${params.datadir} -c $cov_file -t $pheno_file -g genotypes_plink1_rA.raw
     """
 }
 
