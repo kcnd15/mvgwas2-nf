@@ -278,5 +278,30 @@ obs.stat <- MTAR::Get_UV_from_data(traits = traits.dat,
                              covariance = TRUE)
 
 # show results
-obs.stat$U$P1[1:3]
-obs.stat$V$P1[1:3]
+# obs.stat$U$P1[1:3]
+# obs.stat$V$P1[1:3]
+
+U = obs.stat$U
+V = obs.stat$V
+
+# create MAF data (named vector)
+maf_entries = length(U[[1]])
+MAF = c(1:maf_entries)
+MAF[1:maf_entries] = 0.012678 # just a sample value
+# names(MAF) = c(paste0("SNP", 1:maf_entries))
+names(MAF) = names(U[[1]])
+
+# call MTAR
+pval <-  MTAR(U = U, V = V, MAF = MAF)
+
+# process results
+pval
+
+# write pval values to a file
+# pval$MTAR0, 
+# pval$cMTAR$p, pval$cMTAR$rho1.min, pval$cMTAR$rho2.min
+# pval$iMTAR$p, pval$iMTAR$rho1.min, pval$iMTAR$rho2.min
+# pval$cctP
+
+
+
