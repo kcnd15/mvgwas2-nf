@@ -120,9 +120,16 @@ if (params.help) {
     log.info 'Parameters for MTAR:'
     log.info " --cov COVARIATES            covariate file"
     log.info " --datadir dir               data directory (default: ${params.datadir})"
+    log.info ''
+    log.info 'Parameters for MOSTest:'
+    log.info " --mostest_data_dir dir      data directory"
+    log.info " --mostest_pheno pheno       phenotype file"
+    log.info " --mostest_bfile bfile       PLINK bfile prefix"
+    log.info " --mostest_result_prefix p   result files prefix"
     
     exit(1)
 }
+
 
 // Check mandatory parameters
 // parameters required for all methods:
@@ -240,8 +247,8 @@ workflow {
 
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
-        mostest_p1()
-        mostest_p2()
+        mostest_run_mostest()
+        mostest_process_results()
     }
 }
 
@@ -560,13 +567,28 @@ process mtar_p3_run_mtar {
 // MOSTest processing
 // ------------------------------------------------------------------------------
 
-process mostest_p1 {
-    exec:
-    println "this is process mostest_p1"
+process mostest_run_mostest {
+  
+    debug params.debug_flag
+    
+    script:
+    println "this is process mostest_run_mostest"
+    
+    """
+    cd ${moduleDir}/bin/mostest
+    echo "MOSTest data dir: ${params.mostest_data_dir}"
+    ./run_mostest.sh ${params.mostest_data_dir}
+    """
 }
 
-process mostest_p2 {
-    exec:
-    println "this is process mostest_p2"
+process mostest_process_results {
+  
+    script:
+    println "this is process mostest_process_results"
+    
+    """
+    # python3 process_results.py chr21.bim results
+    # python3 process_results_ext.py chr21.bim results
+    """
 }
 

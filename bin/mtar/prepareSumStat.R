@@ -295,7 +295,7 @@ names(MAF) = names(U[[1]])
 pval <-  MTAR(U = U, V = V, MAF = MAF)
 
 # process results
-pval
+print(pval)
 
 # write pval values to a file
 # pval$MTAR0, 
