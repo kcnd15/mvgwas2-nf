@@ -1,8 +1,9 @@
 # run MOSTest-script with MATLAB
 # kc
+# ./run_mostest.sh pheno.txt chr21 mostest_results ../../data/mostest ../../result
 
-echo "run_mostest.sh command line arguments: $1"
-echo "try, run('run_mostest('$1', '$2', '$3')'; end; quit"
+echo "run_mostest.sh command line arguments:"
+echo "try, run('run_mostest('$1', '$2', '$3', '$4', '$5')'; end; quit"
 
-# matlab -nosplash -nodesktop -r "try, run('run_mostest('$1', '$2', '$3')'; end; quit"
-matlab -nosplash -nodesktop -r "try, run_mostest('$1', '$2', '$3'), catch me, fprintf('%s: %s\n', me.identifier, me.message), exit(1);, end, exit(0);"
+# execute matlab script run_mostest.m
+matlab -nosplash -nodesktop -r "try, run_mostest('$1', '$2', '$3', '$4', '$5'), catch me, fprintf('%s: %s\n', me.identifier, me.message), exit(1);, end, exit(0);"

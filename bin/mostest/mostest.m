@@ -1,3 +1,21 @@
+function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
+
+debug_flag = false;
+
+if debug_flag
+  fprintf("mostest.m: started...\n")
+  fprintf("pheno_file   : %s\n", pheno_file)
+  fprintf("bfile_prefix : %s\n", bfile_prefix)
+  fprintf("out_prefix   : %s\n", out_prefix)
+  fprintf("data_dir     : %s\n", data_dir)
+  fprintf("result_dir   : %s\n", result_dir)
+  fprintf("\n")
+end
+
+out = out_prefix;
+pheno_file_name = pheno_file;
+bfile = bfile_prefix;
+
 % =============== parameters section =============== 
 
 % optional arguments
@@ -13,7 +31,7 @@ if ~exist('maf_threshold', 'var'), maf_threshold = 0.005; end;                  
 % required input
 if ~exist('out', 'var'),   error('out file prefix is required'); end
 if isempty(zmat_name)
-  if ~exist('pheno', 'var'), error('pheno file is required'); end
+  if ~exist('pheno_file_name', 'var'), error('pheno file is required'); end
   if ~exist('bfile', 'var'), error('bfile is required'); end
 end
 
@@ -26,25 +44,58 @@ if ~exist('paretotails_quantile', 'var'), paretotails_quantile = 0.9999; end;   
       
 % =============== end of parameters section =============== 
 
+if debug_flag
+  fprintf("mostest.m: shuffle start...\n")
+end
+
 if auto_compile_shuffle && (exist('Shuffle') ~= 3), mex 'Shuffle.c'; end;   % ensure Shuffle is compiled
+
+if debug_flag
+  fprintf("mostest.m: shuffle end.\n")
+end
 
 tic
 
 if isempty(zmat_name)
 
-  fileID = fopen(sprintf('%s.bim', bfile));
-  bim_file = textscan(fileID,'%s %s %s %s %s %s');
-  fclose(fileID);
+  fprintf("mostest.m: if isempty(zmat_name)\n")
+
+  try
+      bfile_bim = sprintf('%s/%s.bim', data_dir, bfile);
+      fprintf("trying to open file %s\n", bfile_bim)
+      fileID = fopen(bfile_bim);
+      fprintf("...opened\n")
+      bim_file = textscan(fileID,'%s %s %s %s %s %s');
+      fclose(fileID);
+  catch me
+      % On error, print error message and exit with failure
+      fprintf('mostest.m %s / %s for file %s\n', me.identifier, me.message, bfile_bim)
+      exit(1)
+  end
+
+
   if isfinite(snps) && (snps ~= length(bim_file{1})), error('snps=%i is incompatible with .bim file; please check your snps parameter (or remove it to auto-detect #snps)', snps);end
   snps=length(bim_file{1});
 
-  fileID = fopen(sprintf('%s.fam', bfile));
-  fam_file = textscan(fileID,'%s %s %s %s %s %s');
-  fclose(fileID);
+  try
+    bfile_fam = sprintf('%s/%s.fam', data_dir, bfile);
+    fprintf("trying to open file %s\n", bfile_fam)
+    fileID = fopen(bfile_fam);
+    fprintf("...opened\n")
+    fam_file = textscan(fileID,'%s %s %s %s %s %s');
+    fclose(fileID);
+  catch me
+      % On error, print error message and exit with failure
+      fprintf('mostest.m %s / %s for file %s\n', me.identifier, me.message, bfile_fam)
+      exit(1)
+  end
+  
   if isfinite(nsubj) && (nsubj ~= length(fam_file{1})), error('nsubj=%i is incompatible with .fam file; please check your snps parameter (or remove it to auto-detect nsubj)', nsubj);end
   nsubj=length(fam_file{1});
 
   fprintf('%i snps and %i subjects detected in bfile\n', snps, nsubj);
+  
+  pheno = sprintf('%s/%s', data_dir, pheno_file_name);
 
   fprintf('Loading phenotype matrix from %s... ', pheno);
   if 1 
@@ -109,7 +160,21 @@ if isempty(zmat_name)
   for i=1:chunk:snps
     j=min(i+chunk-1, snps);
     fprintf('gwas: loading snps %i to %i... ', i, j);    tic;
-    geno_int8 = PlinkRead_binary2(nsubj, i:j, bfile);
+    
+    try
+        bfile_path = sprintf('%s/%s', data_dir, bfile);
+        
+        if debug_flag
+          fprintf("\nPlinkRead_binary2, bfile=%s\n", bfile_path)
+        end
+        
+        geno_int8 = PlinkRead_binary2(nsubj, i:j, bfile_path);
+    catch me
+        % On error, print error message and exit with failure
+        fprintf('mostest.m %s / %s for file %s\n', me.identifier, me.message, bfile_path)
+        exit(1)
+    end
+    
     fprintf('processing... ', i, j);   
     geno = nan(size(geno_int8), 'single'); for code = int8([0,1,2]), geno(geno_int8==code) = single(code); end;
 
@@ -145,7 +210,7 @@ if isempty(zmat_name)
   i_major = freqvec > 0.5;
   freqvec(i_major) = 1.0 - freqvec(i_major);
 
-  fname = sprintf('%s_zmat.mat', out);
+  fname = sprintf('%s/%s_zmat.mat', result_dir, out);
   fprintf('saving %s as -v7.3... ', fname);
   save(fname, '-v7.3', 'zmat_orig', 'zmat_perm', 'beta_orig', 'beta_perm', 'measures', 'nvec', 'zvec_cca', 'freqvec', 'ymat_corr');
   fprintf('OK.\n')
@@ -248,7 +313,7 @@ minp_log10pval_perm(isinf(minp_log10pval_perm) & ivec_snp_good_flat) = -log10(ep
 most_log10pval_orig(isinf(most_log10pval_orig) & ivec_snp_good_flat) = -log10(eps(0));
 most_log10pval_perm(isinf(most_log10pval_perm) & ivec_snp_good_flat) = -log10(eps(0));
 
-fname=sprintf('%s.mat', out);
+fname=sprintf('%s/%s.mat', result_dir, out);
 fprintf('saving %s... ', fname);
 save(fname, '-v7', ...
  'most_log10pval_orig', 'minp_log10pval_orig', ...
@@ -272,3 +337,5 @@ if 0
   x=sort(mostvecs(2, ivec_snp_good'));  y=sort(mostvecs(1, ivec_snp_good'));  lim=400;; % x=permuted; y=original
   figure(2); clf; hold on; plot(x,y, '.'); xlim([0, lim]); ylim([0, lim]); plot([0, lim], [0, lim]); xlabel('MOSTest statistic, permuted'); ylabel('MOSTest statistic, original'); title('MOSTest: QQ plot original vs permuted');
 end
+end % function
+
