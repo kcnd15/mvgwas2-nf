@@ -25,6 +25,8 @@
   * - single Nextflow script for processing various multivariate GWAS methods:
   *   - MANTA
   *   - GEMMA
+  *   - MTAR
+  *   - MOSTest
  */
 
 // general parameters
@@ -78,6 +80,11 @@ params.mtar_cov = null
 params.datadir = '.'
 
 // MOSTest
+params.mostest_pheno = null
+params.mostest_bfile = null
+params.mostest_out_prefix = null
+params.mostest_data_dir = null
+params.mostest_result_dir = null
 
 
 // Print usage
@@ -122,11 +129,12 @@ if (params.help) {
     log.info " --datadir dir               data directory (default: ${params.datadir})"
     log.info ''
     log.info 'Parameters for MOSTest:'
-    log.info " --mostest_data_dir dir      data directory"
-    log.info " --mostest_pheno pheno       phenotype file"
-    log.info " --mostest_bfile bfile       PLINK bfile prefix"
-    log.info " --mostest_result_prefix p   result files prefix"
-    
+    log.info " --mostest_pheno pheno       phenotype file (default: ${params.mostest_pheno})"
+    log.info " --mostest_bfile bfile       PLINK bfile prefix (default: ${params.mostest_bfile})"
+    log.info " --mostest_out_prefix p      result files prefix (default: ${params.mostest_out_prefix})"
+    log.info " --mostest_data_dir dir      data directory (default: ${params.mostest_data_dir})"
+    log.info " --mostest_result_dir dir    result directory (default: ${params.mostest_result_dir})"
+  
     exit(1)
 }
 
@@ -196,6 +204,18 @@ if ("gemma" in params.methodsList) {
     log.info ''
 }
 
+if ("mostest" in params.methodsList) {
+
+    log.info 'MOSTest parameters'
+    log.info '--------------------'
+    log.info "Phenotype file               : ${params.mostest_pheno}"
+    log.info "PLINK bfile prefix           : ${params.mostest_bfile}"
+    log.info "Output file prefix           : ${params.mostest_out_prefix}"
+    log.info "Input data directory         : ${params.mostest_data_dir}"
+    log.info "Result directory             : ${params.mostest_result_dir}"
+    log.info ''
+}
+
 // main workflow
 workflow {
 
@@ -205,6 +225,8 @@ workflow {
     filePheno = Channel.fromPath(params.pheno)
 
     fileCov = Channel.fromPath(params.cov)
+    
+    fileMostestPheno = Channel.fromPath(params.mostest_pheno)
 
     // common processing step
     chunks = common_p0_split_genotype(fileGenoVcf, fileGenoTbi) | flatten
@@ -228,7 +250,7 @@ workflow {
         // Compute kinship
         tuple_eigen = gemma_p2_kinship(tuple_files)
 
-        // // Test for association between phenotypes and genetic variants
+        // Test for association between phenotypes and genetic variants
         // and collect summary statistics
         gemma_p3_test_association(tuple_files, tuple_eigen, chunks) | gemma_p4_collect_summary_statistics
     }
@@ -247,8 +269,8 @@ workflow {
 
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
-        mostest_run_mostest()
-        mostest_process_results()
+        out_prefix = mostest_run_mostest(fileMostestPheno)
+        mostest_process_results(out_prefix)
     }
 }
 
@@ -567,28 +589,55 @@ process mtar_p3_run_mtar {
 // MOSTest processing
 // ------------------------------------------------------------------------------
 
+// params.mostest_pheno = 'pheno.txt' 
+// params.mostest_bfile = 'chr21'
+// params.mostest_out_prefix = 'mostest_results'
+// params.mostest_data_dir = '$baseDir/data/mostest'
+// params.mostest_result_dir = 'result'
+
 process mostest_run_mostest {
   
     debug params.debug_flag
+    
+    input:
+      file(pheno) //
+      
+    output:
+      // tuple file("${params.mostest_out_prefix}.mat"), file("${params.mostest_out_prefix}_zmat.mat")
+      val "${params.mostest_out_prefix}"
     
     script:
     println "this is process mostest_run_mostest"
     
     """
-    cd ${moduleDir}/bin/mostest
-    echo "MOSTest data dir: ${params.mostest_data_dir}"
-    ./run_mostest.sh ${params.mostest_data_dir}
+    echo "mostest_run_mostest: pheno= $pheno"
+    pwd
+    # cd ${moduleDir}/bin/mostest
+    # echo "MOSTest pheno: ${params.mostest_data_dir}"
+    ${moduleDir}/bin/mostest/run_mostest.sh $pheno ${params.mostest_bfile} ${params.mostest_out_prefix} ${params.mostest_data_dir} ${params.mostest_result_dir}
+    
+    # ln -s ${params.mostest_result_dir}/${params.mostest_out_prefix}.mat .
+    # ln -s ${params.mostest_result_dir}/${params.mostest_out_prefix}_zmat.mat .
     """
 }
 
 process mostest_process_results {
   
+    debug params.debug_flag
+    
+    input:
+    // tuple file(result_mat), file(result_zmat)
+    val out_prefix
+  
     script:
     println "this is process mostest_process_results"
     
     """
-    # python3 process_results.py chr21.bim results
-    # python3 process_results_ext.py chr21.bim results
+    echo ${moduleDir}/bin/mostest/process_results.py ${params.mostest_data_dir}/${params.mostest_bfile}.bim ${params.mostest_result_dir}/$out_prefix
+        
+    python3 ${moduleDir}/bin/mostest/process_results.py ${params.mostest_data_dir}/${params.mostest_bfile}.bim ${params.mostest_result_dir}/$out_prefix
+
+    # python3 bin/mostest/process_results.py data/mostest/chr21.bim result/mostest_results -> produces an error
     """
 }
 

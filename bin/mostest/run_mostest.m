@@ -15,7 +15,7 @@ function exitcode = run_mostest(pheno_file, bfile_prefix, out_prefix, data_dir, 
   fprintf("plink bfile prefix  : %s\n", bfile)
   fprintf("output files prefix : %s\n", out)
   fprintf("data directory      : %s\n", data_dir)
-  fprintf("result directory    : %s\n", data_dir)
+  fprintf("result directory    : %s\n", result_dir)
   fprintf("\n")
   
   mostest(pheno, bfile, out, data_dir, result_dir); % start the MOSTest analysis
