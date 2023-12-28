@@ -1,5 +1,17 @@
 function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 
+% Phenotype file               : /home/kcan/UOC/tfm/mvgwas2-nf/data/eg.phenotypes.txt
+% PLINK bfile prefix           : chr21
+% Output file prefix           : mostest_results_chr21
+% Input data directory         : /home/kcan/UOC/tfm/mvgwas2-nf/data/mostest
+% Result directory             : /home/kcan/UOC/tfm/mvgwas2-nf/result
+
+pheno_file = "eg.phenotypes.txt";
+bfile_prefix = "genotypes_plink1";
+out_prefix = "mostest_results_genotypes";
+data_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/data";
+result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result";
+
 debug_flag = false;
 
 if debug_flag
@@ -69,6 +81,8 @@ if isempty(zmat_name)
       fclose(fileID);
   catch me
       % On error, print error message and exit with failure
+      fprintf('mostest.m: current directory is %s\n', pwd)
+      fprintf('mostest.m: ls %s\n', ls)
       fprintf('mostest.m %s / %s for file %s\n', me.identifier, me.message, bfile_bim)
       exit(1)
   end
@@ -101,6 +115,16 @@ if isempty(zmat_name)
   if 1 
       ymat_df = readtable(pheno, 'Delimiter', 'tab');
       measures = ymat_df.Properties.VariableNames;
+      
+      % kc: remove first column "ID" if present 
+      if measures{1} == 'ID'
+        measures_length = length(measures);
+        ymat_df =  ymat_df(:,2:measures_length);
+        % ymat must have the same number of subjects as the .FAM file
+        ymat_df = ymat_df(1:nsubj,:);
+      end
+
+      % continue with reduced table
       ymat_orig = table2array(ymat_df);
   else
       % an alternative helper code that reads phenotype matrix without a header

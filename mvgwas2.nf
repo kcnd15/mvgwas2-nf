@@ -85,6 +85,7 @@ params.mostest_bfile = null
 params.mostest_out_prefix = null
 params.mostest_data_dir = null
 params.mostest_result_dir = null
+params.mostest_sample = null
 
 
 // Print usage
@@ -134,6 +135,7 @@ if (params.help) {
     log.info " --mostest_out_prefix p      result files prefix (default: ${params.mostest_out_prefix})"
     log.info " --mostest_data_dir dir      data directory (default: ${params.mostest_data_dir})"
     log.info " --mostest_result_dir dir    result directory (default: ${params.mostest_result_dir})"
+    log.info " --mostest_sample            use MOSTest sample data (default: ${params.mostest_sample})"
   
     exit(1)
 }
@@ -269,7 +271,14 @@ workflow {
 
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
-        out_prefix = mostest_run_mostest(fileMostestPheno)
+        if (params.geno) {
+          (bfile, tuple_bfiles) = mostest_create_plink_files(fileGenoVcf)
+          log.info("tuple: $bfile, $tuple_bfiles")
+        } else {
+          bfile = params.mostest_bfile
+        }
+        
+        out_prefix = mostest_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
         mostest_process_results(out_prefix)
     }
 }
@@ -595,26 +604,61 @@ process mtar_p3_run_mtar {
 // params.mostest_data_dir = '$baseDir/data/mostest'
 // params.mostest_result_dir = 'result'
 
+process mostest_create_plink_files {
+  
+    debug params.debug_flag
+    
+    input:
+    path vcf_file
+    
+    output:
+    val "genotypes_plink1"
+    tuple file("genotypes_plink1.bed"), 
+          file("genotypes_plink1.bim"),
+          file("genotypes_plink1.fam")
+    
+    script:
+    println "mostest_create_plink_files: vcf_file = $vcf_file"
+    
+    """
+    # generate PLINK 1.9 files
+    echo "mostest_create_plink_files"
+    pwd
+    plink --vcf ${vcf_file} --out genotypes_plink1
+    """
+}
+
 process mostest_run_mostest {
   
     debug params.debug_flag
     
     input:
-      file(pheno) //
+      file(pheno)
+      val(bfile)
+      tuple file("genotypes_plink1.bed"), 
+          file("genotypes_plink1.bim"),
+          file("genotypes_plink1.fam")
       
     output:
       // tuple file("${params.mostest_out_prefix}.mat"), file("${params.mostest_out_prefix}_zmat.mat")
       val "${params.mostest_out_prefix}"
     
     script:
-    println "this is process mostest_run_mostest"
+    println "this is process mostest_run_mostest: bfile = $bfile"
+    println "prefix = ${params.mostest_out_prefix}"
     
     """
     echo "mostest_run_mostest: pheno= $pheno"
     pwd
     # cd ${moduleDir}/bin/mostest
+    export MATLABPATH=/home/j/Documents/MATLAB/mine
     # echo "MOSTest pheno: ${params.mostest_data_dir}"
-    ${moduleDir}/bin/mostest/run_mostest.sh $pheno ${params.mostest_bfile} ${params.mostest_out_prefix} ${params.mostest_data_dir} ${params.mostest_result_dir}
+    
+    export MATLABPATH=${moduleDir}
+    echo "mostest_run_mostest, MATLABPATH:"
+    
+    # ${moduleDir}/bin/mostest/run_mostest.sh $pheno ${params.mostest_bfile} ${params.mostest_out_prefix} ${params.mostest_data_dir} ${params.mostest_result_dir}
+    ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${params.mostest_result_dir}
     
     # ln -s ${params.mostest_result_dir}/${params.mostest_out_prefix}.mat .
     # ln -s ${params.mostest_result_dir}/${params.mostest_out_prefix}_zmat.mat .
