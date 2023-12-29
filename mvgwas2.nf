@@ -279,8 +279,8 @@ workflow {
           bfile = params.mostest_bfile
         }
         
-        out_prefix = mostest_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
-        mostest_process_results(bfile, out_prefix)
+        (out_prefix, tuple_bfiles) = mostest_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
+        mostest_process_results(bfile, out_prefix, tuple_bfiles)
     }
 }
 
@@ -643,6 +643,9 @@ process mostest_run_mostest {
     output:
       // tuple file("${params.mostest_out_prefix}.mat"), file("${params.mostest_out_prefix}_zmat.mat")
       val "${params.mostest_out_prefix}"
+      tuple file("genotypes_plink1.bed"), 
+          file("genotypes_plink1.bim"),
+          file("genotypes_plink1.fam")
     
     script:
     println "this is process mostest_run_mostest: bfile = $bfile"
@@ -674,15 +677,19 @@ process mostest_process_results {
     // tuple file(result_mat), file(result_zmat)
     val bfile
     val out_prefix
+    tuple file("genotypes_plink1.bed"), 
+          file("genotypes_plink1.bim"),
+          file("genotypes_plink1.fam")
   
     script:
     println "this is process mostest_process_results:"
     println "bfile: $bfile, out_prefix: $out_prefix"
     
     """
-    echo ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
-        
-    python3 ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
+    # echo ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
+    # python3 ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
+    
+    python3 ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${params.result_dir}/$out_prefix
 
     # python3 bin/mostest/process_results.py data/mostest/chr21.bim result/mostest_results -> produces an error
     """
