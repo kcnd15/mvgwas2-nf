@@ -58,6 +58,7 @@ params.geno = null
 params.pheno = null
 
 params.dir = 'result' // output directory
+params.result_dir = null
 
 
 // Define method specific parameters
@@ -279,7 +280,7 @@ workflow {
         }
         
         out_prefix = mostest_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
-        mostest_process_results(out_prefix)
+        mostest_process_results(bfile, out_prefix)
     }
 }
 
@@ -671,15 +672,17 @@ process mostest_process_results {
     
     input:
     // tuple file(result_mat), file(result_zmat)
+    val bfile
     val out_prefix
   
     script:
-    println "this is process mostest_process_results"
+    println "this is process mostest_process_results:"
+    println "bfile: $bfile, out_prefix: $out_prefix"
     
     """
-    echo ${moduleDir}/bin/mostest/process_results.py ${params.mostest_data_dir}/${params.mostest_bfile}.bim ${params.mostest_result_dir}/$out_prefix
+    echo ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
         
-    python3 ${moduleDir}/bin/mostest/process_results.py ${params.mostest_data_dir}/${params.mostest_bfile}.bim ${params.mostest_result_dir}/$out_prefix
+    python3 ${moduleDir}/bin/mostest/process_results.py ${params.data_dir}/${bfile}.bim ${params.result_dir}/$out_prefix
 
     # python3 bin/mostest/process_results.py data/mostest/chr21.bim result/mostest_results -> produces an error
     """
