@@ -467,13 +467,15 @@ process gemma_p2_kinship {
 
     output:
     tuple file("kinship.sXX.eigenD.txt"), file("kinship.sXX.eigenU.txt") // into kinship_ch
+    
+    // kc: add "--set-missing-var-ids @:#" to get unique variant ids
 
     script:
     """
     # Compute kinship
     export OPENBLAS_NUM_THREADS=${params.threads}
     prefix=\$(basename $bed | sed 's/.bed//')
-    plink2 --bfile \$prefix --maf ${params.maf} --indep-pairwise 50 5 0.8 --threads ${params.threads}
+    plink2 --bfile \$prefix --maf ${params.maf} --indep-pairwise 50 5 0.8 --threads ${params.threads} --set-missing-var-ids @:#
     plink2 --bfile \$prefix --extract plink2.prune.in --out geno.pruned --make-bed --threads ${params.threads}
     gemma -gk 2 -bfile geno.pruned -outdir . -o kinship
     gemma -bfile geno.pruned -k kinship.sXX.txt -eigen -outdir . -o kinship.sXX
