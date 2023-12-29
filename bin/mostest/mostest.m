@@ -1,16 +1,10 @@
 function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 
-% Phenotype file               : /home/kcan/UOC/tfm/mvgwas2-nf/data/eg.phenotypes.txt
-% PLINK bfile prefix           : chr21
-% Output file prefix           : mostest_results_chr21
-% Input data directory         : /home/kcan/UOC/tfm/mvgwas2-nf/data/mostest
-% Result directory             : /home/kcan/UOC/tfm/mvgwas2-nf/result
-
-pheno_file = "eg.phenotypes.txt";
-bfile_prefix = "genotypes_plink1";
-out_prefix = "mostest_results_genotypes";
-data_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/data";
-result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result";
+% Phenotype file               : pheno_file, eg. mvgwas2-nf/data/eg.phenotypes.txt
+% PLINK bfile prefix           : bfile_prefix, e.g. chr21
+% Output file prefix           : out_prefix, e.g. mostest_results_chr21
+% Input data directory         : data_dir, e.g. mvgwas2-nf/data/mostest
+% Result directory             : result_dir, e.g. mvgwas2-nf/result
 
 debug_flag = false;
 
