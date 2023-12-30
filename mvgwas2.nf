@@ -68,13 +68,11 @@ params.cov = null
 params.t = 'none' // phenotype transformation: none, sqrt, log
 params.i = 'none' // test for interaction with a covariate: none, <covariate>
 params.ng = 10 // minimum number of individuals per genotype group
-
-params.manta_out = 'mvgwas.tsv'
+params.manta_out_prefix = null
 
 // GEMMA
-params.maf = 0.01 // MAF filter
-params.gemma_out = 'gemma.tsv'
-params.threads = 1 // No. of threads
+params.maf = null // MAF filter
+params.threads = null // No. of threads
 
 // MTAR
 params.mtar_cov = null
@@ -119,12 +117,11 @@ if (params.help) {
     log.info " --t TRANSFOMATION           phenotype transformation: none, sqrt, log (default: $params.t)"
     log.info " --i INTERACTION             test for interaction with a covariate: none, <covariate> (default: $params.i)"
     log.info " --ng INDIVIDUALS/GENOTYPE   minimum number of individuals per genotype group (default: $params.ng)"
-    log.info " --manta_out OUTPUT          output file (default: $params.manta_out)"
+    log.info " --manta_out_prefix prefix   Output result file prefix (default ${params.manta_out_prefix})"
     log.info ''
     log.info 'Parameters for GEMMA:'
     log.info " --maf MAF                   MAF filter (default: ${params.maf})"
     log.info " --threads THREADS           number of threads (default: ${params.threads})"
-    log.info " --gemma_out OUTPUT          output file prefix (default: ${params.gemma_out})"
     log.info ''
     log.info 'Parameters for MTAR:'
     log.info " --cov COVARIATES            covariate file"
@@ -193,7 +190,7 @@ if ("manta" in params.methodsList) {
     log.info "Phenotype transformation     : ${params.t}"
     log.info "Interaction                  : ${params.i}"
     log.info "Individuals/genotype         : ${params.ng}" 
-    log.info "Output file                  : ${params.manta_out}"
+    log.info "Output result file prefix    : ${params.manta_out_prefix}"
     log.info ''
 }
 
@@ -203,7 +200,6 @@ if ("gemma" in params.methodsList) {
     log.info '------------------'
     log.info "MAF                          : ${params.maf}"
     log.info "Threads                      : ${params.threads}"
-    log.info "Output file                  : ${params.gemma_out}"
     log.info ''
 }
 
@@ -273,13 +269,13 @@ workflow {
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
         if (params.geno) {
-          (bfile, tuple_bfiles) = mostest_create_plink_files(fileGenoVcf)
+          (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf)
         } else {
           bfile = params.mostest_bfile
         }
         
-        (out_prefix, tuple_bfiles) = mostest_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
-        mostest_process_results(bfile, out_prefix, tuple_bfiles)
+        (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
+        mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
     }
 }
 
@@ -353,7 +349,7 @@ process manta_p2_mvgwas_manta {
 
     output:
 
-    path('sstats.*.txt') // optional true // into sstats_ch
+    path("${params.manta_out_prefix}.*.txt") // optional true // into sstats_ch
     
     script:
     
@@ -375,14 +371,14 @@ process manta_p2_mvgwas_manta {
           region=\$(paste <(grep -P "^\$chr\t" $chunk | head -n 1) <(grep -P "^\$chr\t" $chunk | tail -n 1 | cut -f2) | sed 's/\t/:/' | sed 's/\t/-/')
         
           echo "if region: [" \$region "]"
-          echo "--output" sstats.\$k.tmp
-          echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
+          echo "--output" ${params.manta_out_prefix}.\$k.tmp
+          echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output ${params.manta_out_prefix}.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
         
-          ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose 
+          ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output ${params.manta_out_prefix}.\$k.tmp --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose 
         
           ((k++))
       done
-      cat sstats.*.tmp > sstats.\${chunknb}.txt
+      cat ${params.manta_out_prefix}.*.tmp > ${params.manta_out_prefix}.\${chunknb}.txt
     else
         # only 1 chromosome
         echo "entering else..."
@@ -390,10 +386,10 @@ process manta_p2_mvgwas_manta {
         region=\$(paste <(head -n 1 $chunk) <(tail -n 1 $chunk | cut -f2) | sed 's/\t/:/' | sed 's/\t/-/')
         
         echo "else region: [" \$region "]"
-        echo "--output" sstats.\${chunknb}.txt
-        echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
+        echo "--output" ${params.manta_out_prefix}.\${chunknb}.txt
+        echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output ${params.manta_out_prefix}.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
         
-        ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output sstats.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose
+        ${moduleDir}/bin/manta/test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output ${params.manta_out_prefix}.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose
     fi
     """
 }
@@ -600,7 +596,7 @@ process mtar_p3_run_mtar {
 // MOSTest processing
 // ------------------------------------------------------------------------------
 
-process mostest_create_plink_files {
+process mostest_p1_create_plink_files {
   
     debug params.debug_flag
     
@@ -626,7 +622,7 @@ process mostest_create_plink_files {
     """
 }
 
-process mostest_run_mostest {
+process mostest_p2_run_mostest {
   
     debug params.debug_flag
     
@@ -654,7 +650,7 @@ process mostest_run_mostest {
     """
 }
 
-process mostest_process_results {
+process mostest_p3_process_results {
   
     debug params.debug_flag
     
