@@ -57,7 +57,7 @@ params.l = 500 // No. of variants/chunk
 params.geno = null
 params.pheno = null
 
-params.dir = 'result' // output directory
+// params.dir = 'result' // output directory
 params.result_dir = null
 
 
@@ -107,9 +107,11 @@ if (params.help) {
     log.info ''
     log.info 'Common parameters:'
     log.info ' --methods "manta,gemma,mtar,mostest" select one or more GWAS methods'
-    log.info ' --pheno PHENOTYPES          (covariate-adjusted) phenotype file'
-    log.info ' --geno GENOTYPES            indexed genotype VCF file'
-    log.info " --dir DIRECTORY             output directory (default: $params.dir)"
+    log.info " --data_dir dir              input data directory (default: ${params.data_dir})"
+    log.info " --result_dir dir            output result directory (default: ${params.result_dir})"
+    log.info " --pheno PHENOTYPES          (covariate-adjusted) phenotype file (default: ${params.pheno})"
+    log.info " --geno GENOTYPES            indexed genotype VCF file (default: ${params.geno})"
+    // log.info " --dir DIRECTORY             output directory (default: $params.dir)"
     log.info " --l VARIANTS/CHUNK          variants tested per chunk (default: $params.l)"
     log.info ''
     log.info 'Parameters for MANTA:'
@@ -178,7 +180,8 @@ log.info '------------------'
 log.info "GWAS methods                 : ${params.methodsList}"
 log.info "Phenotype data               : ${params.pheno}"
 log.info "Genotype data                : ${params.geno}"
-log.info "Output directory             : ${params.dir}"
+log.info "Input directory              : ${params.data_dir}"
+log.info "Output directory             : ${params.result_dir}"
 log.info ''
 
 if ("manta" in params.methodsList) {
@@ -204,6 +207,14 @@ if ("gemma" in params.methodsList) {
 }
 
 if ("mostest" in params.methodsList) {
+  
+    log.info("debug: params.mostest_pheno = ${params.mostest_pheno2}")
+    log.info("debug: params.pheno = ${params.pheno}")
+    if (params.mostest_pheno2 == null) {
+      log.info("debug: if case")
+      params.mostest_pheno = params.pheno
+      log.info("debug: if case, params.mostest_pheno is now ${params.mostest_pheno}")
+    }
 
     log.info 'MOSTest parameters'
     log.info '--------------------'
@@ -217,21 +228,22 @@ if ("mostest" in params.methodsList) {
 
 // main workflow
 workflow {
+  
+    log.info("workflow begin")
 
-    // input files
+    // common input files
     fileGenoVcf = Channel.fromPath(params.geno)
     fileGenoTbi = Channel.fromPath("${params.geno}.tbi")
     filePheno = Channel.fromPath(params.pheno)
 
-    fileCov = Channel.fromPath(params.cov)
-    
-    fileMostestPheno = Channel.fromPath(params.mostest_pheno)
-
     // common processing step
+    log.info("common processing step")
     chunks = common_p0_split_genotype(fileGenoVcf, fileGenoTbi) | flatten
 
     // specific processing steps for Manta
     if ("manta" in params.methodsList) {
+      
+        fileCov = Channel.fromPath(params.cov)
 
         // preprocess phenotype and covariate data
         tuple_files = manta_p1_preprocess_pheno_cov(filePheno, fileCov, fileGenoVcf)
@@ -268,6 +280,10 @@ workflow {
 
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
+      
+        log.info("mostest: mostest_pheno = ${params.mostest_pheno}")
+        fileMostestPheno = Channel.fromPath(params.mostest_pheno)
+
         if (params.geno) {
           (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf)
         } else {
@@ -400,7 +416,7 @@ process manta_p3_collect_summary_statistics {
     // creates an output text file containing the multi-trait GWAS summary statistics
 
     debug params.debug_flag
-    publishDir "${params.dir}", mode: 'copy'     
+    publishDir "${params.result_dir}", mode: 'copy'     
 
     input:
     file(out) // from pub_ch
@@ -445,11 +461,36 @@ process gemma_p1_preprocess_geno_pheno {
 
     script:
     """
-    comm -12 <(bcftools view -h $vcf | grep CHROM | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
+    # old version which worked with eg.genotypes:
+    # comm -12 <(bcftools view -h $vcf | grep CHROM | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
+    
+    # new version for ADNI data:
+    # delete first 9 lines containing the header columns #CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, FORMAT
+    comm -12 <(bcftools view -h $vcf | grep '^#CHROM' | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
+    
     plink2 --vcf $vcf --keep keep.txt --make-bed --out geno --threads ${params.threads} 
-    awk '{print int(NR)"\t"\$0}' <(cut -f2 geno.fam) > idx
+    
+    # old version which worked with eg.genotypes:
+    # awk '{print int(NR)"\t"\$0}' <(cut -f2 geno.fam) > idx
+    
+    # new version for ADNI data:
+    awk '{printf("%d\\t%s\\n", int(NR), \$0)}' <(cut -f2 geno.fam) > idx
+    
     join -t \$'\t' -1 2 -2 1 <(sort -k2,2 idx) <(sort -k1,1 $pheno) | sort -k2,2n | cut -f1,2 --complement > pheno.tmp
-    paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv tmpfile geno.fam
+    # paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv tmpfile geno.fam
+    # original geno.fam has 385 lines like idx, but pheno.tmp has 390 lines; 
+    # differences are (which are not like 037_S_0501, but just phenotype values:
+    # > 245.529 -> line 386 of new geno.fam / tmpfile / pheno.tmp
+    # > 248.273 -> line 387
+    # > 251.325 -> line 387
+    # > 289.503 -> line 387
+    # > 318.724 -> line 387
+    # seems that there's an issue with the join creating pheno.tmp; therefore the following paste-command
+    # is commented out temporarily to proceed with the original geno.bed, because the next
+    # workflow process generates the following plink2 error:
+    # Error: Unexpected PLINK 1 .bed file size (expected 9269431 bytes).
+    # working files in ~/UOC/tfm/mvgwas2-nf/work/e0/8b828f2dc38a0ccc9a61fbf30dbc56
+    paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv geno.fam geno.fam.old; mv tmpfile geno.fam
     """
 }
 
@@ -532,7 +573,7 @@ process gemma_p3_test_association {
 
 process gemma_p4_collect_summary_statistics {
 
-    publishDir "${params.dir}", mode: 'copy'
+    publishDir "${params.result_dir}", mode: 'copy'
 
     input:
     file(out) // from pub_ch

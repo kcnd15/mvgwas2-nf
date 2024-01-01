@@ -1,5 +1,5 @@
 clean
-result
+# result
 work
 singularity
 docker/.docker
@@ -10,6 +10,7 @@ trace*
 # exclude data
 data
 *.tmp
+*.gz
 
 # exclude R files / directories
 .Rproj.user
