@@ -105,9 +105,10 @@ if isempty(zmat_name)
   
   pheno = sprintf('%s/%s', data_dir, pheno_file_name);
 
-  fprintf('Loading phenotype matrix from %s... ', pheno);
+  fprintf('Loading phenotype matrix from %s...\n', pheno);
   if 1 
-      ymat_df = readtable(pheno, 'Delimiter', 'tab');
+      ymat_df = readtable(pheno, 'FileType', 'text', 'Delimiter', 'tab');
+      % t = readtable("data.tsv", "FileType","text",'Delimiter', '\t');
       measures = ymat_df.Properties.VariableNames;
       
       % kc: remove first column "ID" if present 

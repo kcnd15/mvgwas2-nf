@@ -208,21 +208,31 @@ if ("gemma" in params.methodsList) {
 
 if ("mostest" in params.methodsList) {
   
-    log.info("debug: params.mostest_pheno = ${params.mostest_pheno2}")
-    log.info("debug: params.pheno = ${params.pheno}")
-    if (params.mostest_pheno2 == null) {
-      log.info("debug: if case")
-      params.mostest_pheno = params.pheno
-      log.info("debug: if case, params.mostest_pheno is now ${params.mostest_pheno}")
+    if (params.mostest_pheno == null) {
+      mostest_pheno = params.pheno
+    } else {
+      mostest_pheno = params.mostest_pheno
+    }
+
+    if (params.mostest_data_dir == null) {
+      mostest_data_dir = params.data_dir
+    } else {
+      mostest_data_dir = params.mostest_data_dir
+    }
+    
+    if (params.mostest_result_dir == null) {
+      mostest_result_dir = params.result_dir
+    } else {
+      mostest_result_dir = params.mostest_result_dir
     }
 
     log.info 'MOSTest parameters'
     log.info '--------------------'
-    log.info "Phenotype file               : ${params.mostest_pheno}"
+    log.info "Phenotype file               : ${mostest_pheno}"
     log.info "PLINK bfile prefix           : ${params.mostest_bfile}"
     log.info "Output file prefix           : ${params.mostest_out_prefix}"
-    log.info "Input data directory         : ${params.mostest_data_dir}"
-    log.info "Result directory             : ${params.mostest_result_dir}"
+    log.info "Input data directory         : ${mostest_data_dir}"
+    log.info "Result directory             : ${mostest_result_dir}"
     log.info ''
 }
 
@@ -281,8 +291,7 @@ workflow {
     // specific processing steps for MOSTEST
     if ("mostest" in params.methodsList) {
       
-        log.info("mostest: mostest_pheno = ${params.mostest_pheno}")
-        fileMostestPheno = Channel.fromPath(params.mostest_pheno)
+        fileMostestPheno = Channel.fromPath(mostest_pheno)
 
         if (params.geno) {
           (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf)
@@ -477,19 +486,7 @@ process gemma_p1_preprocess_geno_pheno {
     awk '{printf("%d\\t%s\\n", int(NR), \$0)}' <(cut -f2 geno.fam) > idx
     
     join -t \$'\t' -1 2 -2 1 <(sort -k2,2 idx) <(sort -k1,1 $pheno) | sort -k2,2n | cut -f1,2 --complement > pheno.tmp
-    # paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv tmpfile geno.fam
-    # original geno.fam has 385 lines like idx, but pheno.tmp has 390 lines; 
-    # differences are (which are not like 037_S_0501, but just phenotype values:
-    # > 245.529 -> line 386 of new geno.fam / tmpfile / pheno.tmp
-    # > 248.273 -> line 387
-    # > 251.325 -> line 387
-    # > 289.503 -> line 387
-    # > 318.724 -> line 387
-    # seems that there's an issue with the join creating pheno.tmp; therefore the following paste-command
-    # is commented out temporarily to proceed with the original geno.bed, because the next
-    # workflow process generates the following plink2 error:
-    # Error: Unexpected PLINK 1 .bed file size (expected 9269431 bytes).
-    # working files in ~/UOC/tfm/mvgwas2-nf/work/e0/8b828f2dc38a0ccc9a61fbf30dbc56
+
     paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv geno.fam geno.fam.old; mv tmpfile geno.fam
     """
 }
@@ -657,9 +654,7 @@ process mostest_p1_create_plink_files {
     
     """
     # generate PLINK 1.9 files
-    echo "mostest_create_plink_files"
-    pwd
-    plink --vcf ${vcf_file} --out genotypes_plink1
+    plink2 --vcf ${vcf_file} --out genotypes_plink1 --make-bed
     """
 }
 
@@ -687,7 +682,7 @@ process mostest_p2_run_mostest {
     }
     
     """
-    ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${params.mostest_result_dir} ${moduleDir}/bin/mostest
+    ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${mostest_result_dir} ${moduleDir}/bin/mostest
     """
 }
 
@@ -709,9 +704,9 @@ process mostest_p3_process_results {
     }
     
     """
-    echo ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${params.result_dir}/$out_prefix
+    echo ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${mostest_result_dir}/$out_prefix
     
-    python3 ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${params.result_dir}/$out_prefix
+    python3 ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${mostest_result_dir}/$out_prefix
 
     # python3 bin/mostest/process_results.py data/mostest/chr21.bim result/mostest_results -> produces an error
     """
