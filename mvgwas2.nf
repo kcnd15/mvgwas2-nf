@@ -73,6 +73,11 @@ params.manta_out_prefix = null
 // GEMMA
 params.maf = null // MAF filter
 params.threads = null // No. of threads
+params.max_range_phenotypes = null // maximum range of phenotypes
+params.emi = null // maximum number of iterations for the PX-EM method in the null (default 10000)
+params.nri = null // maximum number of iterations for the Newton-Raphson's method in the null (default 100)
+params.emp = null // precision for the PX-EM method in the null (default 0.0001)
+params.nrp = null // precision for the Newton-Raphson's method in the null (default 0.0001)
 
 // MTAR
 params.mtar_cov = null
@@ -105,6 +110,7 @@ if (params.help) {
     log.info 'Usage: '
     log.info '    nextflow run mvgwas2.nf [options]'
     log.info ''
+    
     log.info 'Common parameters:'
     log.info ' --methods "manta,gemma,mtar,mostest" select one or more GWAS methods'
     log.info " --data_dir dir              input data directory (default: ${params.data_dir})"
@@ -114,6 +120,7 @@ if (params.help) {
     // log.info " --dir DIRECTORY             output directory (default: $params.dir)"
     log.info " --l VARIANTS/CHUNK          variants tested per chunk (default: $params.l)"
     log.info ''
+    
     log.info 'Parameters for MANTA:'
     log.info ' --cov COVARIATES            covariate file'
     log.info " --t TRANSFOMATION           phenotype transformation: none, sqrt, log (default: $params.t)"
@@ -121,14 +128,22 @@ if (params.help) {
     log.info " --ng INDIVIDUALS/GENOTYPE   minimum number of individuals per genotype group (default: $params.ng)"
     log.info " --manta_out_prefix prefix   Output result file prefix (default ${params.manta_out_prefix})"
     log.info ''
+    
     log.info 'Parameters for GEMMA:'
     log.info " --maf MAF                   MAF filter (default: ${params.maf})"
     log.info " --threads THREADS           number of threads (default: ${params.threads})"
+    log.info " --max_range_phenotypes n    maximum number of phenotypes (default: ${params.max_range_phenotypes})"
+    log.info " --emi EMI                   max number of iterations for the PX-EM method (default: ${params.emi})"
+    log.info " --nri NRI                   max number of iterations for the Newton-Raphson's method (default: ${params.nri})"
+    log.info " --emp EMP                   precision for the PX-EM method (default: ${params.emp})"
+    log.info " --nrp NRP                   precision for the Newton-Raphson's method (default: ${params.nrp})"
     log.info ''
+    
     log.info 'Parameters for MTAR:'
     log.info " --cov COVARIATES            covariate file"
     log.info " --datadir dir               data directory (default: ${params.datadir})"
     log.info ''
+    
     log.info 'Parameters for MOSTest:'
     log.info " --mostest_pheno pheno       phenotype file (default: ${params.mostest_pheno})"
     log.info " --mostest_bfile bfile       PLINK bfile prefix (default: ${params.mostest_bfile})"
@@ -203,6 +218,11 @@ if ("gemma" in params.methodsList) {
     log.info '------------------'
     log.info "MAF                          : ${params.maf}"
     log.info "Threads                      : ${params.threads}"
+    log.info "maximum number of phenotypes : ${params.max_range_phenotypes}"
+    log.info "EMI                          : ${params.emi}"
+    log.info "NRI                          : ${params.nri}"
+    log.info "EMP                          : ${params.emp}"
+    log.info "NRP                          : ${params.nrp}"
     log.info ''
 }
 
@@ -469,7 +489,7 @@ process manta_p3_collect_summary_statistics {
 // GEMMA Step 1: Preprocess genotype and phenotype data
 process gemma_p1_preprocess_geno_pheno {
 
-    cpus params.threads
+    // cpus params.threads
 
     input:
     path vcf // file vcf from file(params.geno)    
@@ -515,12 +535,22 @@ process gemma_p2_kinship {
     // kc: add "--set-missing-var-ids @:#" to get unique variant ids
 
     script:
+    
+    if (params.debug_flag) {
+      log.info("${task.process} started")
+      log.info("process: ${task.process}")
+      log.info("attempt: ${task.attempt}") 
+      log.info("workDir: ${task.workDir}")
+    }
+    
     """
     # Compute kinship
     export OPENBLAS_NUM_THREADS=${params.threads}
     prefix=\$(basename $bed | sed 's/.bed//')
+    
     plink2 --bfile \$prefix --maf ${params.maf} --indep-pairwise 50 5 0.8 --threads ${params.threads} --set-missing-var-ids @:#
     plink2 --bfile \$prefix --extract plink2.prune.in --out geno.pruned --make-bed --threads ${params.threads}
+    
     gemma -gk 2 -bfile geno.pruned -outdir . -o kinship
     gemma -bfile geno.pruned -k kinship.sXX.txt -eigen -outdir . -o kinship.sXX
     """
@@ -531,7 +561,9 @@ process gemma_p2_kinship {
 
 process gemma_p3_test_association {
 
-    cpus params.threads
+    // cpus params.threads
+    
+    debug params.debug_flag
 
     input:
     tuple file(bed), file(bim), file(fam) // from geno_ch
@@ -542,12 +574,83 @@ process gemma_p3_test_association {
     file('gemma.0*.assoc.txt') // into sstats_ch
 
     script:
+    
+    if (params.debug_flag) {
+      log.info("${task.process} started")
+      log.info("process: ${task.process}")
+      log.info("attempt: ${task.attempt}") 
+      log.info("workDir: ${task.workDir}")
+    }
+    
+    // # p=`echo $(echo 21 - 5 | bc -l)`
+
     """
+    date +"%c %N"
+    pwd
+    
+    # create a sequence 1..number of phenotypes, eg. 1 2 3 4 5
+    # first 5 columns in the geno.fam are no phenotypes and thus not counted
+    
+    npids=\$(echo \$(awk '{print NF}' $fam | head -1) - 5 | bc -l)
+    echo "npids:" \$npids
+    
+    oldpids=\$(seq \$(echo \$(awk '{print NF}' $fam | head -1) - 5 | bc -l))
+    echo "oldpids:" \$oldpids
+    
+    maxpids=${params.max_range_phenotypes}
+    echo "maxpids:" \$maxpids
+    
+    actpids=`[ "\$oldpids" -lt "\$maxpids" ] && echo \$oldpids || echo \$maxpids`
+    echo "actpids:" \$actpids
+    
+    pids=`seq \$actpids`
+    echo "pids:" \$pids
+
+    echo "trying chunk.."
+
+    chunknb=\$(basename $chunk | sed 's/chunk//')
+    echo "chunknb:" \$chunknb
+    
+    touch gemma.\${chunknb}.assoc.txt
+    
+    if [[ \$(cut -f1 $chunk | sort | uniq -c | wc -l) -ge 2 ]]; then
+        echo "entering if..., multiple chromosomes"
+    else
+        echo "entering else..., only 1 chromosome"
+        
+        paste <(head -1 $chunk) <(tail -1 $chunk | cut -f2) > region
+        
+        pwd
+        ls -l region 
+        cat region
+        
+        plink2 -bfile geno --extract bed1 region --make-bed --out geno.ss
+        
+        paste <(cut -f1-5 geno.ss.fam) <(cut -f1-5 --complement geno.fam) > tmpfile; mv tmpfile geno.ss.fam
+        
+        ls -l geno.ss.fam
+        
+        echo "trying to run gemma with $kinship_d and $kinship_u"
+        
+        # the following call does not work for the ADNI data with 16 phenotypes (creates zero s(E) matrix)
+        # gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.\${chunknb} -maf ${params.maf} &> STATUS || exit 0
+        # changing paramaeters, the following call worked:
+        # gemma -lmm -b geno.ss -d kinship.sXX.eigenD.txt -u kinship.sXX.eigenU.txt -n 1 2 3 4 5 6 7 8 9 10 -outdir . -o gemma.0000000185 -maf 0.01 -emi 500 -nri 10 -emp 0.001 -nrp 0.001
+        gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.\${chunknb} -maf ${params.maf} -emi ${params.emi} -nri ${params.nri} -emp ${params.emp} -nrp ${params.nrp} &> STATUS
+        
+    fi
+    """
+    
+    /*
     export OPENBLAS_NUM_THREADS=${params.threads}
     pids=\$(seq \$(echo \$(awk '{print NF}' $fam | head -1) - 5 | bc -l))
+    echo "pids:" \$pids
+    
     chunknb=\$(basename $chunk | sed 's/chunk//')
+    echo "chunknb:" \$chunknb
 
     if [[ \$(cut -f1 $chunk | sort | uniq -c | wc -l) -ge 2 ]]; then
+        echo "entering if..., multiple chromosomes"
         k=1
         cut -f1 $chunk | sort | uniq | while read chr; do
             paste <(grep -P "^\$chr\t" $chunk | head -1) <(grep -P "^\$chr\t" $chunk | tail -1 | cut -f2) > region
@@ -563,10 +666,22 @@ process gemma_p3_test_association {
         done
         cat gemma.k*.assoc.txt > gemma.\${chunknb}.assoc.txt        
     else
+        echo "entering else..., only 1 chromosome"
+        
         paste <(head -1 $chunk) <(tail -1 $chunk | cut -f2) > region
+        
+        pwd
+        ls -l region 
+        cat region
+        
         plink2 -bfile geno --extract bed1 region --make-bed --out geno.ss --threads ${params.threads}
+        
         paste <(cut -f1-5 geno.ss.fam) <(cut -f1-5 --complement geno.fam) > tmpfile; mv tmpfile geno.ss.fam
+        
+        ls -l geno.ss.fam
+        
         (timeout 120 gemma -lmm -b geno.ss -d $kinship_d -u $kinship_u -n \$pids -outdir . -o gemma.\${chunknb} -maf ${params.maf} &> STATUS || exit 0)
+        
         if [[ \$(grep ERROR STATUS) ]]; then
             touch gemma.\${chunknb}.assoc.txt
         else
@@ -574,6 +689,7 @@ process gemma_p3_test_association {
         fi
     fi
     """
+    */
 }
 
 // GEMMA Step 4: Collect summary statistics
