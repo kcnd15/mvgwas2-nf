@@ -6,6 +6,30 @@ function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 % Input data directory         : data_dir, e.g. mvgwas2-nf/data/mostest
 % Result directory             : result_dir, e.g. mvgwas2-nf/result
 
+%  phenotype file      : phenotypes.clean.tsv
+%  plink bfile prefix  : genotypes_plink1
+%  output files prefix : mostest_results_genotypes
+%  data directory      : .
+%  result directory    : /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI
+%  
+%  mostest.m: if isempty(zmat_name)
+%  trying to open file ./genotypes_plink1.bim
+%  ...opened
+%  trying to open file ./genotypes_plink1.fam
+%  ...opened
+%  500 snps and 808 subjects detected in bfile
+%  Loading phenotype matrix from ./phenotypes.clean.tsv...
+%  run_mostest.sh: MATLAB:table:RowIndexOutOfRange: Row index exceeds table dimensions.
+%
+% Work dir:
+%  /home/kcan/UOC/tfm/mvgwas2-nf/work/cd/e15cc55c9d8740c3441403edc6b58a
+
+pheno_file = "phenotypes.clean.tsv";
+bfile_prefix = "genotypes_plink1";
+out_prefix = "mostest_results_genotypes";
+data_dir = ".";
+result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI";
+
 debug_flag = false;
 
 if debug_flag
@@ -116,7 +140,10 @@ if isempty(zmat_name)
         measures_length = length(measures);
         ymat_df =  ymat_df(:,2:measures_length);
         % ymat must have the same number of subjects as the .FAM file
-        ymat_df = ymat_df(1:nsubj,:);
+        % ADNI data error: Row index exceeds table dimensions.
+        pheno_entries = height(ymat_df);
+        min_subj_pheno = min(pheno_entries, nsubj);
+        ymat_df = ymat_df(1:min_subj_pheno,:);
       end
 
       % continue with reduced table

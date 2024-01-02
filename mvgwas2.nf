@@ -208,23 +208,32 @@ if ("gemma" in params.methodsList) {
 
 if ("mostest" in params.methodsList) {
   
+    /*
     if (params.mostest_pheno == null) {
       mostest_pheno = params.pheno
     } else {
       mostest_pheno = params.mostest_pheno
     }
-
+    */
+    mostest_pheno = params.mostest_pheno ?: params.pheno
+    
+    /*
     if (params.mostest_data_dir == null) {
       mostest_data_dir = params.data_dir
     } else {
       mostest_data_dir = params.mostest_data_dir
     }
+    */
+    mostest_data_dir = params.mostest_data_dir ?: params.data_dir
     
+    /*
     if (params.mostest_result_dir == null) {
       mostest_result_dir = params.result_dir
     } else {
       mostest_result_dir = params.mostest_result_dir
     }
+    */
+    mostest_result_dir = params.mostest_result_dir ?: params.result_dir
 
     log.info 'MOSTest parameters'
     log.info '--------------------'
@@ -707,6 +716,8 @@ process mostest_p2_run_mostest {
         echo "--output" ${params.mostest_out_prefix}.\${chunknb}.txt
         
         plink2 -bfile $bfile --extract bed1 region --make-bed --out $bfile
+        
+        ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${mostest_result_dir} ${moduleDir}/bin/mostest
     fi
 
     """
