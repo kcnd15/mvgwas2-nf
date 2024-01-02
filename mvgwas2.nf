@@ -299,8 +299,9 @@ workflow {
           bfile = params.mostest_bfile
         }
         
-        (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles)
-        mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
+        // (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
+        (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
+        // mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
     }
 }
 
@@ -666,14 +667,15 @@ process mostest_p2_run_mostest {
       file(pheno)
       val(bfile)
       tuple file("genotypes_plink1.bed"), 
-          file("genotypes_plink1.bim"),
-          file("genotypes_plink1.fam")
+            file("genotypes_plink1.bim"),
+            file("genotypes_plink1.fam")
+      each file(chunk)
       
     output:
       val "${params.mostest_out_prefix}"
-      tuple file("genotypes_plink1.bed"), 
-            file("genotypes_plink1.bim"),
-            file("genotypes_plink1.fam")
+      // tuple file("genotypes_plink1.bed"), 
+      //      file("genotypes_plink1.bim"),
+      //      file("genotypes_plink1.fam")
     
     script:
     if (params.debug_flag) {
@@ -682,8 +684,35 @@ process mostest_p2_run_mostest {
     }
     
     """
-    ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${mostest_result_dir} ${moduleDir}/bin/mostest
+    echo "processing file " $chunk
+    
+    chunknb=\$(basename $chunk | sed 's/chunk//')
+    echo "chunknb:" \$chunknb
+    
+    # check for number of chromosomes
+    if [[ \$(cut -f1 $chunk | sort | uniq -c | wc -l) -ge 2 ]]; then
+        echo "entering if... -> mulitple chromosomes"
+    
+    else
+        # only 1 chromosome
+        echo "entering else... only 1 chromosome"
+        
+        paste <(head -1 $chunk) <(tail -1 $chunk | cut -f2) > region
+        
+        echo "else region:"
+        pwd
+        ls -l region
+        cat region
+        
+        echo "--output" ${params.mostest_out_prefix}.\${chunknb}.txt
+        
+        plink2 -bfile $bfile --extract bed1 region --make-bed --out $bfile
+    fi
+
     """
+    // echo "test.R --phenotypes $pheno --covariates $cov --genotypes $vcf --region "\$region" --output ${params.manta_out_prefix}.\${chunknb}.txt --min_nb_ind_geno ${params.ng} -t ${params.t} -i ${params.i} --verbose"
+    // ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${mostest_result_dir} ${moduleDir}/bin/mostest
+
 }
 
 process mostest_p3_process_results {
