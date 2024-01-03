@@ -24,16 +24,25 @@ function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 % Work dir:
 %  /home/kcan/UOC/tfm/mvgwas2-nf/work/cd/e15cc55c9d8740c3441403edc6b58a
 
-pheno_file = "phenotypes.clean.tsv";
-bfile_prefix = "genotypes_plink1";
-out_prefix = "mostest_results_genotypes";
-data_dir = ".";
-result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI";
+% direct settings for debugging one processing step:
+% pheno_file = "phenotypes.clean.tsv";
+% bfile_prefix = "genotypes_plink1";
+% out_prefix = "mostest_results_genotypes";
+% data_dir = ".";
+% result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI";
 
-debug_flag = false;
+debug_flag = true;
 
 if debug_flag
   fprintf("mostest.m: started...\n")
+  if batchStartupOptionUsed
+      fprintf("batchStartupOptionUsed\n")
+  end
+  
+  % license check
+  license_code = license('test','Statistics_Toolbox');
+  fprintf("license('test','Statistics_Toolbox'): %d\n", license_code)
+
   fprintf("pheno_file   : %s\n", pheno_file)
   fprintf("bfile_prefix : %s\n", bfile_prefix)
   fprintf("out_prefix   : %s\n", out_prefix)

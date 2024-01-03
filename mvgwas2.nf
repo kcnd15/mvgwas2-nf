@@ -90,6 +90,7 @@ params.mostest_out_prefix = null
 params.mostest_data_dir = null
 params.mostest_result_dir = null
 params.mostest_sample = null
+params.mostest_forks = null
 
 
 // Print usage
@@ -151,7 +152,8 @@ if (params.help) {
     log.info " --mostest_data_dir dir      data directory (default: ${params.mostest_data_dir})"
     log.info " --mostest_result_dir dir    result directory (default: ${params.mostest_result_dir})"
     log.info " --mostest_sample            use MOSTest sample data (default: ${params.mostest_sample})"
-  
+    log.info " --mostest_forks             max number of MOSTest forks (default: ${params.mostest_forks})"
+
     exit(1)
 }
 
@@ -262,6 +264,7 @@ if ("mostest" in params.methodsList) {
     log.info "Output file prefix           : ${params.mostest_out_prefix}"
     log.info "Input data directory         : ${mostest_data_dir}"
     log.info "Result directory             : ${mostest_result_dir}"
+    log.info "Max MOSTest forks            : ${params.mostest_forks}"
     log.info ''
 }
 
@@ -322,14 +325,15 @@ workflow {
       
         fileMostestPheno = Channel.fromPath(mostest_pheno)
 
-        if (params.geno) {
-          (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf, filePheno)
-        } else {
-          bfile = params.mostest_bfile
-        }
+        // if (params.geno) {
+        (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf, filePheno)
+        //} else {
+        //  bfile = params.mostest_bfile
+        //}
         
-        (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
-        mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
+        // (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
+        // mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
+        mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks) | mostest_p3_process_results
     }
 }
 
@@ -823,6 +827,10 @@ process mostest_p2_run_mostest {
   
     debug params.debug_flag
     
+    // limit the number of process forks due to issues with the Matlab license check
+    // run_mostest.sh: MATLAB:license:NoFeature: kurtosis requires a Statistics_Toolbox license.
+    maxForks params.mostest_forks
+    
     input:
       file(pheno)
       val(bfile)
@@ -836,6 +844,10 @@ process mostest_p2_run_mostest {
       // tuple file("genotypes_plink1.bed"), 
       //      file("genotypes_plink1.bim"),
       //      file("genotypes_plink1.fam")
+      tuple file("genotypes_plink1.bim"),
+            file("${params.mostest_out_prefix}*[0-9].mat"),
+            file("${params.mostest_out_prefix}*_zmat.mat"),
+            file(chunk)
     
     script:
     if (params.debug_flag) {
@@ -868,7 +880,11 @@ process mostest_p2_run_mostest {
         
         plink2 -bfile $bfile --extract bed1 region --make-bed --out $bfile
         
-        ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix} . ${mostest_result_dir} ${moduleDir}/bin/mostest
+        # license error for kurtosis / stats-toolsbox is displayed after some processes (83) ran successfully:
+        # [33/ae68bb] process > mostest_p2_run_mostest (55)       [ 38%] 73 of 190
+        # ERROR ~ Error executing process > 'mostest_p2_run_mostest (70)'
+        # ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix}.\${chunknb} . ${mostest_result_dir} ${moduleDir}/bin/mostest
+        ${moduleDir}/bin/mostest/run_mostest.sh $pheno $bfile ${params.mostest_out_prefix}.\${chunknb} . . ${moduleDir}/bin/mostest
     fi
 
     """
@@ -882,22 +898,27 @@ process mostest_p3_process_results {
     debug params.debug_flag
     
     input:
-    val bfile
     val out_prefix
-    tuple file("genotypes_plink1.bed"), 
-          file("genotypes_plink1.bim"),
-          file("genotypes_plink1.fam")
+    tuple file(file_geno_bim),
+          file(file_out_mat),
+          file(file_out_zmat),
+          file(chunk)
   
     script:
     if (params.debug_flag) {
       println "this is process mostest_process_results:"
-      println "bfile: $bfile, out_prefix: $out_prefix"
+      println "out_prefix: $out_prefix"
+      // println "bfile: $bfile"
     }
     
     """
+    chunknb=\$(basename $chunk | sed 's/chunk//')
+    
     echo ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${mostest_result_dir}/$out_prefix
     
-    python3 ${moduleDir}/bin/mostest/process_results.py genotypes_plink1.bim ${mostest_result_dir}/$out_prefix
+    # process_results.py <bim> <fname> [<out>]
+    # bim - path to bim file; fname - prefix of .mat files; out - optional suffix for output files
+    python3 ${moduleDir}/bin/mostest/process_results.py $file_geno_bim $out_prefix.\${chunknb} ${mostest_result_dir}/$out_prefix.\${chunknb}
 
     # python3 bin/mostest/process_results.py data/mostest/chr21.bim result/mostest_results -> produces an error
     """

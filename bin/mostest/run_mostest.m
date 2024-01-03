@@ -5,7 +5,17 @@
 
 function exitcode = run_mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 
-  fprintf("starting mostest.m .....\n\n")
+  fprintf("run_mostest.m: starting mostest.m .....\n\n")
+  
+  if batchStartupOptionUsed
+      fprintf("batchStartupOptionUsed\n")
+  else
+      fprintf("no batchStartupOptionUsed\n")
+  end
+  
+  % license check
+  license_code = license('test','Statistics_Toolbox');
+  fprintf("license('test','Statistics_Toolbox'): %d\n", license_code)
 
   pheno = pheno_file;            % full or relative path to the phenotype file; 'pheno.txt'
   bfile = bfile_prefix;          % full or relative path to plink bfile prefix; 'chr21'

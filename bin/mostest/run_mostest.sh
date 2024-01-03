@@ -11,4 +11,5 @@ echo "MATLAB-path: $6"
 export MATLABPATH=$6
 
 # execute matlab script run_mostest.m
-matlab -nosplash -nodesktop -r "try, run_mostest('$1', '$2', '$3', '$4', '$5'), catch me, fprintf('run_mostest.sh: %s: %s\n', me.identifier, me.message), exit(1);, end, exit(0);"
+# matlab -nosplash -nodesktop -r "try, run_mostest('$1', '$2', '$3', '$4', '$5'), catch me, fprintf('run_mostest.sh: %s: %s\n', me.identifier, me.message), exit(1);, end, exit(0);"
+matlab -batch "try, run_mostest('$1', '$2', '$3', '$4', '$5'), catch me, fprintf('run_mostest.sh: %s: %s\n', me.identifier, me.message), exit(1);, end, exit(0);"
