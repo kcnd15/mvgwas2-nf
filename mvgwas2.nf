@@ -323,14 +323,13 @@ workflow {
         fileMostestPheno = Channel.fromPath(mostest_pheno)
 
         if (params.geno) {
-          (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf)
+          (bfile, tuple_bfiles) = mostest_p1_create_plink_files(fileGenoVcf, filePheno)
         } else {
           bfile = params.mostest_bfile
         }
         
-        // (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
         (out_prefix, tuple_bfiles) = mostest_p2_run_mostest(fileMostestPheno, bfile, tuple_bfiles, chunks)
-        // mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
+        mostest_p3_process_results(bfile, out_prefix, tuple_bfiles)
     }
 }
 
@@ -504,19 +503,40 @@ process gemma_p1_preprocess_geno_pheno {
     # comm -12 <(bcftools view -h $vcf | grep CHROM | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
     
     # new version for ADNI data:
-    # delete first 9 lines containing the header columns #CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, FORMAT
+    # 1) process genotypes vcf file:
+    # - get column #CHROM with subject ids
+    # - delete first 9 lines containing the header columns #CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, FORMAT
+    # - sort 
+    # 2) process phenotypes file:
+    # - get subject ids, sort 
+    # 3) get common subject ids of genotype and phenotype files
+    #
+    # Sample results for ADNI
+    # 
+    # 808 genotypes.chr22.vcf.gz with subject id
+    # 399 phenotypes with subject id
+    # -> 385 common subject-ids 
+    
     comm -12 <(bcftools view -h $vcf | grep '^#CHROM' | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
     
+    # extract PLINK1 bed files (bed. bim, fam) only for the commond subject ids
     plink2 --vcf $vcf --keep keep.txt --make-bed --out geno --threads ${params.threads} 
     
     # old version which worked with eg.genotypes:
     # awk '{print int(NR)"\t"\$0}' <(cut -f2 geno.fam) > idx
     
     # new version for ADNI data:
+    # create index file with index number and subject id
+    # e.g. for ADNI 
+    # 1	037_S_0501
+    # 2	051_S_1072
+    # 3	002_S_2010
     awk '{printf("%d\\t%s\\n", int(NR), \$0)}' <(cut -f2 geno.fam) > idx
     
+    # join index file of common subject ids with phenotypes file
     join -t \$'\t' -1 2 -2 1 <(sort -k2,2 idx) <(sort -k1,1 $pheno) | sort -k2,2n | cut -f1,2 --complement > pheno.tmp
 
+    # combine old genotype file with phenotypes of common subject ids
     paste <(cut -f1-5 geno.fam) pheno.tmp > tmpfile; mv geno.fam geno.fam.old; mv tmpfile geno.fam
     """
 }
@@ -766,6 +786,7 @@ process mostest_p1_create_plink_files {
     
     input:
     path vcf_file
+    path pheno
     
     output:
     val "genotypes_plink1"
@@ -779,8 +800,22 @@ process mostest_p1_create_plink_files {
     }
     
     """
-    # generate PLINK 1.9 files
-    plink2 --vcf ${vcf_file} --out genotypes_plink1 --make-bed
+    # processing like in gemma_p1_preprocess_geno_pheno
+
+    # find common subject ids of genotypes and phenotypes
+    comm -12 <(bcftools view -h $vcf_file | grep '^#CHROM' | sed 's/\\t/\\n/g' | sed '1,9d' | sort) <(cut -f1 $pheno | sort) > keep.txt
+    
+    # extract PLINK1 bed files (bed. bim, fam) only for the commond subject ids
+    plink2 --vcf $vcf_file --keep keep.txt --make-bed --out genotypes_plink1
+    
+    # create index file with index number and subject id
+    awk '{printf("%d\\t%s\\n", int(NR), \$0)}' <(cut -f2 genotypes_plink1.fam) > idx
+    
+    # join index file of common subject ids with phenotypes file
+    join -t \$'\t' -1 2 -2 1 <(sort -k2,2 idx) <(sort -k1,1 $pheno) | sort -k2,2n | cut -f1,2 --complement > pheno.tmp
+
+    # combine old genotype file with phenotypes of common subject ids
+    paste <(cut -f1-5 genotypes_plink1.fam) pheno.tmp > tmpfile; mv genotypes_plink1.fam genotypes_plink1.fam.old; mv tmpfile genotypes_plink1.fam
     """
 }
 
