@@ -130,7 +130,7 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None,
         plt.show()
 
 
-def qqplot(gwas_data: DataFrame):
+def qqplot(gwas_data: DataFrame, save_path: str = None):
     # pvals <- read.table("DGI_chr3_pvals.txt", header=T)
 
     df = gwas_data.copy()
@@ -170,7 +170,7 @@ def qqplot(gwas_data: DataFrame):
     first = df_sorted['minuslog10pvalue'].iloc[0]
     axisMax = math.ceil(first)
 
-    fig = plt.figure()
+    # fig = plt.figure()
 
     # plt.xlim([0, axisMax])
     # plt.xlabel("Expected")
@@ -178,21 +178,32 @@ def qqplot(gwas_data: DataFrame):
     # plt.ylim([0, axisMax])
     # plt.ylabel("Observed")
 
-    plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
+    # plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
 
     # the observed vs. expected data
-    dataAx = fig.add_subplot(111)
+    # dataAx = fig.add_subplot(111)
 
-    dataAx.set_xlim([0, axisMax])
-    dataAx.set_ylim([0, axisMax])
-    dataAx.set_xlabel('Expected')
-    dataAx.set_ylabel('Observed')
+    # dataAx.set_xlim([0, axisMax])
+    # dataAx.set_ylim([0, axisMax])
+    # dataAx.set_xlabel('Expected')
+    # dataAx.set_ylabel('Observed')
 
     # dataAx.plot(df_sorted.minuslog10pvalue, df_sorted.minuslog10expected, 'r.')  # red dots
 
     # a diagonal line for comparison
     # lineAx = fig.add_subplot(1, 1, 1)
     # dataAx.plot([0, axisMax], [0, axisMax], 'b-')  # blue line
+
+    # qq = sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted)
+    qq = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted, color='red')
+    sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted, color='blue')
+    qq.set(xlabel="Expected", ylabel="Observed",
+           title='Observed vs. Expected distribution of p-values (-log10)')
+
+    plt.legend(labels=['MANTA'])
+
+    if save_path:
+        qq.figure.savefig(save_path)
 
     plt.show()
 
@@ -313,8 +324,10 @@ except Exception as e:
 # create manhattan plot
 if args.saveplot:
     save_plot_path = str(os.path.join(args.resultdir, args.saveplot)) + ".png"
+    save_qqplot_path = str(os.path.join(args.resultdir, args.saveplot)) + "_qq.png"
 else:
     save_plot_path = None
+    save_qqplot_path = None
 
 # manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
-qqplot(result_df)
+qqplot(result_df, save_path=save_qqplot_path)
