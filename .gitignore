@@ -12,6 +12,10 @@ result/
 *.tmp
 *.gz
 
+# exclude dir except certain files
+bin/gwasplots/*
+!bin/gwasplots/*.py
+
 # exclude R files / directories
 .Rproj.user
 .Rhistory
