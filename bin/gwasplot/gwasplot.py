@@ -1,5 +1,9 @@
 # gwasplot.py
 # create GWAS plots
+# sample arguments:
+# GEMMA: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "gemma.*.assoc.txt" --col_chrom 1 --col_pos 3 --col_p 73 --title GEMMA --showplot --saveplot gemma_adni
+# MANTA: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "manta*.txt" --col_chrom 1 --col_pos 2 --col_p 8 --title MANTA --saveplot manta_adni
+# MOSTest: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "mostest_results_genotypes.*.most_perm.sumstats" --col_chrom 1 --col_pos 3 --col_p 6 --title MOSTest --saveplot mostest_adni
 
 import argparse
 import pandas as pd
@@ -58,7 +62,8 @@ def manhattan_plot_sample():
     plt.show()
 
 
-def manhattan_plot(gwas_data: DataFrame, title: str = None):
+def manhattan_plot(gwas_data: DataFrame, title: str = None,
+                   show_plot: bool = True, save_path: str = None):
 
     df = gwas_data.copy()
 
@@ -67,7 +72,6 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None):
 
     # -log_10(pvalue)
     df['minuslog10pvalue'] = -np.log10(df.pvalue)
-    print(df.describe())
 
     # create category for chromosome field
     df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
@@ -114,31 +118,40 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None):
     plt.title(title_string)
 
     # show the graph
-    plt.show()
+    if save_path:
+        plt.savefig(save_path)
+        print(f"{save_path} saved.")
+
+    if show_plot:
+        plt.show()
 
 
-def process_result_file(glob_files, col_chrom: int, col_pos: int, col_p: int) -> DataFrame:
+def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_p: int,
+                        verbose: bool = False) -> DataFrame:
 
     df = DataFrame()
 
     show_once = True
 
     for result_file in glob_files:
-        print(f"processing result file: {result_file}")
+        if verbose:
+            print(f"processing result file: {result_file}")
 
         try:
-            result_data = pd.read_csv(result_file, sep=args.sep)
+            result_data = pd.read_csv(result_file, sep=sep)
         except Exception as e:
             print(e)
             exit(1)
 
         # process result file
-        print(f"rows: {len(result_data)}")
+        if verbose:
+            print(f"rows: {len(result_data)}")
 
         relevant_columns = result_data.columns[[col_chrom, col_pos, col_p]]
 
         if show_once:
-            print(f"columns to be processed: {relevant_columns.to_list()}")
+            if verbose:
+                print(f"columns to be processed: {relevant_columns.to_list()}")
             show_once = False
 
         result_data_relevant = result_data[relevant_columns].copy()
@@ -156,12 +169,16 @@ def process_result_file(glob_files, col_chrom: int, col_pos: int, col_p: int) ->
 # main
 # ------------------------------------------------------------------------------
 
-parser = argparse.ArgumentParser(description='create plots for GWAS results.')
+parser = argparse.ArgumentParser(description='create plots for GWAS results.',
+                                 prog="gwasplot",
+                                 epilog="Columns (CHROM,POS,P):" 
+                                        "MANTA: 1,2,8 GEMMA: 1,3,73 MOSTest: x,x,x",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--resultdir', action='store',
+parser.add_argument('--resultdir', action='store', default='.',
                     help='directory containing GWAS results', required=True)
 parser.add_argument('--resultfile', action='store',
-                    help='regular expression for result files, e.g. manta*.txt', required=True)
+                    help='regular expression for result files, e.g. "manta*.txt"', required=True)
 parser.add_argument('--sep', action='store',
                     help='separator', default="\t")
 parser.add_argument('--col_chrom', action='store',
@@ -174,6 +191,12 @@ parser.add_argument('--title', action='store',
                     help='title of plot')
 parser.add_argument('--sample', action='store_true',
                     help='sample Manhattan plot')
+parser.add_argument('--showplot', action='store_true', default=False,
+                    help='show plot')
+parser.add_argument('--saveplot', action='store',
+                    help='save plot with given prefix in the result directory')
+parser.add_argument('--verbose', action='store_true', default=False,
+                    help='verbose output')
 
 args = parser.parse_args()
 
@@ -185,8 +208,9 @@ if args.sample:
     exit(0)
 
 # print arguments
-print(f"result directory: {args.resultdir}")
-print(f"result file: {args.resultfile}")
+if args.verbose:
+    print(f"result directory: {args.resultdir}")
+    print(f"result file: {args.resultfile}")
 
 # get relevant columns
 column_chrom = args.col_chrom - 1
@@ -205,7 +229,7 @@ try:
     else:
         print(f"{len_g} files found")
 
-    result_df = process_result_file(glob_files=g,
+    result_df = process_result_file(glob_files=g, sep=args.sep,
                                     col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
 
 except Exception as e:
@@ -214,4 +238,9 @@ except Exception as e:
 
 
 # create manhattan plot
-manhattan_plot(result_df, title=args.title)
+if args.saveplot:
+    save_plot_path = str(os.path.join(args.resultdir, args.saveplot)) + ".png"
+else:
+    save_plot_path = None
+
+manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
