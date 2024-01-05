@@ -20,4 +20,5 @@ result/
 
 # exclude Python files
 *.iml
+.idea
 

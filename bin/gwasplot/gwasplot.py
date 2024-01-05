@@ -14,6 +14,10 @@ import glob
 
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+
+import statsmodels.api as sm
+import seaborn as sns
 
 
 def manhattan_plot_sample():
@@ -90,7 +94,7 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None,
     fig = plt.figure(figsize=(14, 8)) # Set the figure size
     ax = fig.add_subplot(111)
 
-    colors = ['darkred','darkgreen','darkblue', 'gold']
+    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
     x_labels = []
     x_labels_pos = []
     for num, (name, group) in enumerate(df_grouped):
@@ -124,6 +128,75 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None,
 
     if show_plot:
         plt.show()
+
+
+def qqplot(gwas_data: DataFrame):
+    # pvals <- read.table("DGI_chr3_pvals.txt", header=T)
+
+    df = gwas_data.copy()
+
+    # rename columns
+    df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
+
+    # observed <- sort(pvals$PVAL)
+    df_sorted = df.sort_values("pvalue")
+
+    # -log_10(pvalue)
+    # lobs <- -(log10(observed))
+    df_sorted['minuslog10pvalue'] = -np.log10(df_sorted.pvalue)
+
+    # expected <- c(1:length(observed))
+    number_of_rows = len(df_sorted)
+    df_sorted['expected'] = range(1, number_of_rows + 1)
+
+    # lexp <- -(log10(expected / (length(expected)+1)))
+    df_sorted['minuslog10expected'] = -np.log10(df_sorted.expected / (number_of_rows + 1))
+
+    # pdf("qqplot.pdf", width=6, height=6)
+    # plot(c(0,7), c(0,7), col="red", lwd=3, type="l", xlab="Expected (-logP)",
+    # ylab="Observed (-logP)", xlim=c(0,7), ylim=c(0,7), las=1, xaxs="i", yaxs="i", bty="l")
+    # points(lexp, lobs, pch=23, cex=.4, bg="black")
+
+    # create Q-Q plot with 45-degree line added to plot
+    # fig = sm.qqplot(data, line='45')
+
+    # sns.lineplot(x="expected", y="minuslog10expected", data=df_sorted)
+    # sm.qqplot(df_sorted.minuslog10pvalue)
+
+    # now plot these two arrays against each other using matplotlib
+    # retrive pmin, the most significant (i.e. min) p value (for defining the axes)
+    # pmin = df_sorted['minuslog10pvalue'][0]
+
+    first = df_sorted['minuslog10pvalue'].iloc[0]
+    axisMax = math.ceil(first)
+
+    fig = plt.figure()
+
+    # plt.xlim([0, axisMax])
+    # plt.xlabel("Expected")
+
+    # plt.ylim([0, axisMax])
+    # plt.ylabel("Observed")
+
+    plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
+
+    # the observed vs. expected data
+    dataAx = fig.add_subplot(111)
+
+    dataAx.set_xlim([0, axisMax])
+    dataAx.set_ylim([0, axisMax])
+    dataAx.set_xlabel('Expected')
+    dataAx.set_ylabel('Observed')
+
+    # dataAx.plot(df_sorted.minuslog10pvalue, df_sorted.minuslog10expected, 'r.')  # red dots
+
+    # a diagonal line for comparison
+    # lineAx = fig.add_subplot(1, 1, 1)
+    # dataAx.plot([0, axisMax], [0, axisMax], 'b-')  # blue line
+
+    plt.show()
+
+    pass
 
 
 def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_p: int,
@@ -172,7 +245,7 @@ def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_
 parser = argparse.ArgumentParser(description='create plots for GWAS results.',
                                  prog="gwasplot",
                                  epilog="Columns (CHROM,POS,P):" 
-                                        "MANTA: 1,2,8 GEMMA: 1,3,73 MOSTest: x,x,x",
+                                        "MANTA: 1,2,8 GEMMA: 1,3,73 MOSTest: 1,3,6",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--resultdir', action='store', default='.',
@@ -243,4 +316,5 @@ if args.saveplot:
 else:
     save_plot_path = None
 
-manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
+# manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
+qqplot(result_df)
