@@ -1,0 +1,4 @@
+method,resultfile,col_chrom,col_pos,col_p
+GEMMA,gemma.*.assoc.txt,1,3,73
+MANTA,manta*.txt,1,2,8
+MOSTest,mostest_results_genotypes.*.most_perm.sumstats,1,3,6

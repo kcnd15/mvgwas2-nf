@@ -28,9 +28,9 @@ def manhattan_plot_sample():
     from scipy.stats import randint
 
     # sample data
-    df = DataFrame({'gene' : ['gene-%i' % i for i in np.arange(10000)],
-                    'pvalue' : uniform.rvs(size=10000),
-                    'chromosome' : ['ch-%i' % i for i in randint.rvs(0,12,size=10000)]})
+    df = DataFrame({'gene': ['gene-%i' % i for i in np.arange(10000)],
+                    'pvalue': uniform.rvs(size=10000),
+                    'chromosome': ['ch-%i' % i for i in randint.rvs(0, 12, size=10000)]})
 
     # -log_10(pvalue)
     df['minuslog10pvalue'] = -np.log10(df.pvalue)
@@ -40,16 +40,16 @@ def manhattan_plot_sample():
 
     # How to plot gene vs. -log10(pvalue) and colour it by chromosome?
     df['ind'] = range(len(df))
-    df_grouped = df.groupby(('chromosome'))
+    df_grouped = df.groupby('chromosome')
 
     # manhattan plot
-    fig = plt.figure(figsize=(14, 8)) # Set the figure size
+    fig = plt.figure(figsize=(14, 8))  # Set the figure size
     ax = fig.add_subplot(111)
-    colors = ['darkred','darkgreen','darkblue', 'gold']
+    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
     x_labels = []
     x_labels_pos = []
     for num, (name, group) in enumerate(df_grouped):
-        group.plot(kind='scatter', x='ind', y='minuslog10pvalue',color=colors[num % len(colors)], ax=ax)
+        group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
         x_labels.append(name)
         x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
     ax.set_xticks(x_labels_pos)
@@ -88,17 +88,17 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None,
 
     # create an index for the x-axis and group by chromosome
     df['ind'] = range(len(df))
-    df_grouped = df.groupby(('chromosome'))
+    df_grouped = df.groupby('chromosome')
 
     # manhattan plot
-    fig = plt.figure(figsize=(14, 8)) # Set the figure size
+    fig = plt.figure(figsize=(14, 8))  # Set the figure size
     ax = fig.add_subplot(111)
 
     colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
     x_labels = []
     x_labels_pos = []
     for num, (name, group) in enumerate(df_grouped):
-        group.plot(kind='scatter', x='ind', y='minuslog10pvalue',color=colors[num % len(colors)], ax=ax)
+        group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
         x_labels.append(name)
         x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
     ax.set_xticks(x_labels_pos)
@@ -249,6 +249,42 @@ def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_
     return df
 
 
+def read_result_file(result_dir, result_row):
+
+    # get relevant columns
+    row_method = result_row[['method']].item()
+    row_col_chrom = result_row[['col_chrom']].item()
+    row_col_pos = result_row[['col_pos']].item()
+    row_col_p = result_row[['col_p']].item()
+    row_resultfile = result_row[['resultfile']].item()
+
+    column_chrom = row_col_chrom - 1
+    column_pos = row_col_pos - 1
+    column_p = row_col_p - 1
+
+    # read result file
+    try:
+        result_file_glob = os.path.join(result_dir, row_resultfile)
+
+        g = glob.glob(result_file_glob)
+        len_g = len(g)
+        if len_g == 0:
+            print("no files found")
+            exit(1)
+        else:
+            print(f"{len_g} files found")
+
+        result_df = process_result_file(glob_files=g, sep=args.sep,
+                                        col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
+        result_df["method"] = row_method
+
+    except Exception as e:
+        print(e)
+        exit(1)
+
+    return result_df
+
+
 # ------------------------------------------------------------------------------
 # main
 # ------------------------------------------------------------------------------
@@ -262,15 +298,15 @@ parser = argparse.ArgumentParser(description='create plots for GWAS results.',
 parser.add_argument('--resultdir', action='store', default='.',
                     help='directory containing GWAS results', required=True)
 parser.add_argument('--resultfile', action='store',
-                    help='regular expression for result files, e.g. "manta*.txt"', required=True)
+                    help='regular expression for result files, e.g. "manta*.txt"')
 parser.add_argument('--sep', action='store',
                     help='separator', default="\t")
 parser.add_argument('--col_chrom', action='store',
-                    help='column number of CHROM', required=True, type=int)
+                    help='column number of CHROM', type=int)
 parser.add_argument('--col_pos', action='store',
-                    help='column number of POS', required=True, type=int)
+                    help='column number of POS', type=int)
 parser.add_argument('--col_p', action='store',
-                    help='column number of p-value', required=True, type=int)
+                    help='column number of p-value', type=int)
 parser.add_argument('--title', action='store',
                     help='title of plot')
 parser.add_argument('--sample', action='store_true',
@@ -281,10 +317,26 @@ parser.add_argument('--saveplot', action='store',
                     help='save plot with given prefix in the result directory')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='verbose output')
+parser.add_argument('--input', action='store',
+                    help='input csv for all method results')
 
 args = parser.parse_args()
 
 print("GWAS plots v0.1")
+
+if args.input:
+    print(f"input csv: {args.input}")
+
+    try:
+        gwas_input = pd.read_csv(args.input, sep=",")
+
+        for index, row in gwas_input.iterrows():
+            result_df = read_result_file(result_dir=args.resultdir, result_row=row)
+
+    except Exception as e:
+        print(e)
+
+    exit(0)
 
 # show sample
 if args.sample:
