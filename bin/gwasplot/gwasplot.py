@@ -66,70 +66,105 @@ def manhattan_plot_sample():
     plt.show()
 
 
-def manhattan_plot(gwas_data: list, show_plot: bool = True, save_path: str = None):
+def manhattan_plot(single_gwas_data: DataFrame, show_plot: bool = True, save_path: str = None):
 
-    for single_gwas_data in gwas_data:
+    # ----------------------------------
+    # preprocessing of the result data
+    # ----------------------------------
+    df = single_gwas_data["result_df"].copy()
+    gwas_method = single_gwas_data["method"]
 
-        df = single_gwas_data["result_df"].copy()
-        gwas_method = single_gwas_data["method"]
+    # rename columns
+    df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
-        # rename columns
-        df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
+    # -log_10(pvalue)
+    df['minuslog10pvalue'] = -np.log10(df.pvalue)
 
-        # -log_10(pvalue)
-        df['minuslog10pvalue'] = -np.log10(df.pvalue)
+    # create category for chromosome field
+    df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
+    chromosomes = df.chromosome.unique().tolist()
+    df.chromosome = df.chromosome.astype('category')
+    # range must represent actual number of chromosomes; here we have only chromosome 1
+    df.chromosome = df.chromosome.cat.set_categories(chromosomes, ordered=True)
 
-        # create category for chromosome field
-        df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
-        chromosomes = df.chromosome.unique().tolist()
-        df.chromosome = df.chromosome.astype('category')
-        # range must represent actual number of chromosomes; here we have only chromosome 1
-        df.chromosome = df.chromosome.cat.set_categories(chromosomes, ordered=True)
+    df = df.sort_values(['chromosome', 'position'])
 
-        df = df.sort_values(['chromosome', 'position'])
+    # create an index for the x-axis and group by chromosome
+    df['ind'] = range(len(df))
+    df_grouped = df.groupby('chromosome')
 
-        # create an index for the x-axis and group by chromosome
-        df['ind'] = range(len(df))
-        df_grouped = df.groupby('chromosome')
+    # ----------------------------
+    # display the manhattan plot
+    # ----------------------------
 
-        # manhattan plot
-        fig = plt.figure(figsize=(14, 8))  # Set the figure size
-        ax = fig.add_subplot(111)
+    fig = plt.figure(figsize=(14, 8))  # Set the figure size for width, height in inches
+    plt.clf()  # clear any previous figures
 
-        colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
-        x_labels = []
-        x_labels_pos = []
-        for num, (name, group) in enumerate(df_grouped):
-            group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-            x_labels.append(name)
-            x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
-        ax.set_xticks(x_labels_pos)
-        ax.set_xticklabels(x_labels)
+    ax = fig.add_subplot(111)  # nrows, ncols, index
 
-        # set axis limits
-        ax.set_xlim([0, len(df)])
+    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
+    x_labels = []
+    x_labels_pos = []
 
-        max_y = df["minuslog10pvalue"].max()
-        ax.set_ylim([0, max_y])
+    # process all groups, here chromosomes
+    for num, (name, group) in enumerate(df_grouped):
+        # group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
+        group.plot(kind='scatter', x='position', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
 
-        # x axis label
-        ax.set_xlabel('Chromosome')
+        pos1 = (group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2)
+        p1 = group['ind'].iloc[-1]
+        p2 = group['ind'].iloc[0]
+        pos2 = p1 - (p1 - p2) / 2
 
-        # set title
-        title_string = f"GWAS plot for {gwas_method}"
+        group_min = group["position"].min()
+        group_max = group["position"].max()
 
-        plt.title(title_string)
+        x_labels.append(str(group_min))
+        x_labels_pos.append(group_min)
 
-        # show the graph
-        if save_path:
-            png_file = save_path + "_" + gwas_method + "_manh.png"
-            plt.savefig(png_file)
-            print(f"{png_file} saved.")
+        # label and position of chromosome, e.g. CHR22
+        x_labels.append(name)
+        # x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
+        group_x = group_max - (group_max - group_min) / 2
+        x_labels_pos.append(group_x)
 
-        if show_plot:
-            plt.show()
+        x_labels.append(str(group_max))
+        x_labels_pos.append(group_max)
 
-        plt.clf()  # clear figure
+    # -----------------------
+    # final layout settings
+    # -----------------------
+    # set x-labels and ticks
+    ax.set_xticks(x_labels_pos)
+    ax.set_xticklabels(x_labels)
+
+    # set axis limits
+    # min, max values of positions
+    position_min = df["position"].min()
+    position_max = df["position"].max()
+    # ax.set_xlim([0, len(df)])
+    ax.set_xlim([position_min, position_max])
+
+    max_y = df["minuslog10pvalue"].max()
+    ax.set_ylim([0, max_y])
+
+    # x axis label
+    ax.set_xlabel('Chromosome')
+
+    # set title
+    title_string = f"GWAS plot for {gwas_method}"
+
+    plt.title(title_string)
+
+    # save the graph
+    if save_path:
+        png_file = save_path + "_" + gwas_method + "_manh.png"
+        plt.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    # show the graph
+    if show_plot:
+        plt.show()
 
 
 def qqplot(gwas_data: list, save_path: str = None):
@@ -372,7 +407,8 @@ else:
 
 if args.input:
     if "manh" in args.plot:
-        manhattan_plot(all_results, show_plot=args.showplot, save_path=save_plot_path)
+        for single_result in all_results:
+            manhattan_plot(single_result, show_plot=args.showplot, save_path=save_plot_path)
 
     if "qq" in args.plot:
         # qqplot for multiple result data
