@@ -66,7 +66,38 @@ def manhattan_plot_sample():
     plt.show()
 
 
-def manhattan_plot(single_gwas_data: DataFrame, show_plot: bool = True, save_path: str = None):
+def preprocess_result(single_gwas_data: dict):
+
+    # ----------------------------------
+    # preprocessing of the result data
+    # ----------------------------------
+    df = single_gwas_data["result_df"].copy()
+    gwas_method = single_gwas_data["method"]
+
+    # rename columns
+    df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
+
+    # -log_10(pvalue)
+    df['minuslog10pvalue'] = -np.log10(df.pvalue)
+
+    # create category for chromosome field
+    df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
+    chromosomes = df.chromosome.unique().tolist()
+    df.chromosome = df.chromosome.astype('category')
+    # range must represent actual number of chromosomes; here we have only chromosome 1
+    df.chromosome = df.chromosome.cat.set_categories(chromosomes, ordered=True)
+
+    df = df.sort_values(['chromosome', 'position'])
+
+    # create an index for the x-axis and group by chromosome
+    df['ind'] = range(len(df))
+    df_grouped = df.groupby('chromosome')
+
+    return df, df_grouped
+
+
+def manhattan_plot(single_gwas_data: dict,
+                   show_plot: bool = True, save_path: str = None):
 
     # ----------------------------------
     # preprocessing of the result data
@@ -165,6 +196,175 @@ def manhattan_plot(single_gwas_data: DataFrame, show_plot: bool = True, save_pat
     # show the graph
     if show_plot:
         plt.show()
+
+
+def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = None):
+
+    number_of_methods = len(gwas_data)
+
+    print(f"miami_plot_all for {number_of_methods} methods")
+
+    # get all comparison pairs
+    comparisons = set()
+
+    for method_number1 in range(number_of_methods):
+        for method_number2 in range(number_of_methods):
+            new_set = None
+            if method_number1 < method_number2:
+                new_set = frozenset([method_number1, method_number2])
+            elif method_number1 > method_number2:
+                new_set = frozenset([method_number2, method_number1])
+
+            if new_set is not None:
+                comparisons.add(new_set)
+
+    # get a list of all pairs
+    pair_list = list()
+    for pair in comparisons:
+        el_list = []
+        for el in pair:
+            el_list.append(el)
+        pair_list.append(el_list)
+
+    # compare all pairs with a Miami plot
+    method_colors = {
+        "GEMMA": ['darkred', 'darkgreen', 'darkblue', 'gold'],
+        "MANTA": ['yellow', 'blue', 'grey', 'red'],
+        "MOSTest": ['grey', 'pink', 'lightgreen', 'yellow'],
+    }
+
+    for pair in pair_list:
+        method1 = gwas_data[pair[0]]
+        method2 = gwas_data[pair[1]]
+
+        method1["colors"] = method_colors[method1["method"]]
+        method2["colors"] = method_colors[method2["method"]]
+
+        print(f"starting Miami plot for {method1['method']} and {method2['method']}")
+        miami_plot(gwas_data1=method1, gwas_data2=method2)
+
+    pass
+
+
+def plot_manhattan(method, df, df_grouped, colors, ax, y_orientation_up: bool = True):
+
+    # colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
+
+    x_labels = []
+    x_labels_pos = []
+
+    # process all groups, here chromosomes
+    for num, (name, group) in enumerate(df_grouped):
+        # group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
+        group.plot(kind='scatter', x='position', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
+
+        pos1 = (group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2)
+        p1 = group['ind'].iloc[-1]
+        p2 = group['ind'].iloc[0]
+        pos2 = p1 - (p1 - p2) / 2
+
+        group_min = group["position"].min()
+        group_max = group["position"].max()
+
+        x_labels.append(str(group_min))
+        x_labels_pos.append(group_min)
+
+        # label and position of chromosome, e.g. CHR22
+        x_labels.append(name)
+        # x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
+        group_x = group_max - (group_max - group_min) / 2
+        x_labels_pos.append(group_x)
+
+        x_labels.append(str(group_max))
+        x_labels_pos.append(group_max)
+
+    # -----------------------
+    # final layout settings
+    # -----------------------
+    # set x-labels and ticks
+    ax.set_xticks(x_labels_pos)
+    ax.set_xticklabels(x_labels)
+
+    # set axis limits
+    # min, max values of positions
+    position_min = df["position"].min()
+    position_max = df["position"].max()
+    # ax.set_xlim([0, len(df)])
+    ax.set_xlim([position_min, position_max])
+
+    max_y = df["minuslog10pvalue"].max()
+    if y_orientation_up:
+        ax.set_ylim([0, max_y])
+    else:
+        ax.set_ylim([max_y, 0])
+
+    # x axis label
+    ax.set_xlabel(method)
+
+def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, save_path: str = None):
+
+    method1 = gwas_data1['method']
+    method2 = gwas_data2['method']
+
+    print(f"Miami plot for {method1} and {method2}")
+
+    # preprocess data
+    df1, df1_grouped = preprocess_result(gwas_data1)
+    df1_position_min = df1["position"].min()
+    df1_position_max = df1["position"].max()
+
+    df2, df2_grouped = preprocess_result(gwas_data2)
+    df2_position_min = df2["position"].min()
+    df2_position_max = df2["position"].max()
+
+    position_min = min(df1_position_min, df2_position_min)
+    position_max = max(df1_position_max, df2_position_max)
+
+    # create graph
+
+    # Fixing random state for reproducibility
+    np.random.seed(19680801)
+
+    dt = (df2_position_max - df2_position_min) / 100
+    t = np.arange(position_min, position_max, dt)
+    nse1 = np.random.randn(len(t))                 # white noise 1
+    nse2 = np.random.randn(len(t))                 # white noise 2
+
+    # Two signals with a coherent part at 10 Hz and a random part
+    s1 = np.sin(2 * np.pi * 10 * t) + nse1
+    s2 = np.sin(2 * np.pi * 10 * t) + nse2
+
+    fig, axs = plt.subplots(2, 1, layout='constrained')
+
+    if False:
+        axs[0].plot(t, s1, t, s2)
+        axs[0].set_xlim(position_min, position_max)
+        axs[0].set_xlabel(method1)
+        axs[0].set_ylim(-5, 4)
+        axs[0].set_ylabel('ylabel 1')
+        axs[0].grid(True)
+
+    plot_manhattan(method=method1, df=df1, df_grouped=df1_grouped,
+                   colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True)
+
+    # cxy, f = axs[1].cohere(s1, s2, 256, 1. / dt)
+    # axs[1].set_ylabel('Coherence')
+
+    if False:
+        axs[1].plot(t, s1, t, s2)
+        axs[1].set_xlim(position_min, position_max)
+        axs[1].set_xlabel(method2)
+        axs[1].set_ylim(4, -5)
+        axs[1].set_ylabel('ylabel 2')
+        axs[1].grid(True)
+
+    plot_manhattan(method=method2, df=df2, df_grouped=df2_grouped,
+                   colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False)
+
+    fig.suptitle("Miami plot")
+
+    plt.show()
+    pass
 
 
 def qqplot(gwas_data: list, save_path: str = None):
@@ -367,7 +567,7 @@ parser.add_argument('--verbose', action='store_true', default=False,
 parser.add_argument('--input', action='store',
                     help='input csv for all method results')
 parser.add_argument('--plot', action='store', default=[], nargs='+',
-                    help='select plots of manh, qq')
+                    help='select plots of manh, qq, miami')
 
 args = parser.parse_args()
 
@@ -409,6 +609,9 @@ if args.input:
     if "manh" in args.plot:
         for single_result in all_results:
             manhattan_plot(single_result, show_plot=args.showplot, save_path=save_plot_path)
+
+    if "miami" in args.plot:
+        miami_plot_all(all_results, show_plot=args.showplot, save_path=save_plot_path)
 
     if "qq" in args.plot:
         # qqplot for multiple result data
