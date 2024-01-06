@@ -66,68 +66,70 @@ def manhattan_plot_sample():
     plt.show()
 
 
-def manhattan_plot(gwas_data: DataFrame, title: str = None,
-                   show_plot: bool = True, save_path: str = None):
+def manhattan_plot(gwas_data: list, show_plot: bool = True, save_path: str = None):
 
-    df = gwas_data.copy()
+    for single_gwas_data in gwas_data:
 
-    # rename columns
-    df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
+        df = single_gwas_data["result_df"].copy()
+        gwas_method = single_gwas_data["method"]
 
-    # -log_10(pvalue)
-    df['minuslog10pvalue'] = -np.log10(df.pvalue)
+        # rename columns
+        df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
-    # create category for chromosome field
-    df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
-    chromosomes = df.chromosome.unique().tolist()
-    df.chromosome = df.chromosome.astype('category')
-    # range must represent actual number of chromosomes; here we have only chromosome 1
-    df.chromosome = df.chromosome.cat.set_categories(chromosomes, ordered=True)
+        # -log_10(pvalue)
+        df['minuslog10pvalue'] = -np.log10(df.pvalue)
 
-    df = df.sort_values(['chromosome', 'position'])
+        # create category for chromosome field
+        df.chromosome = df.chromosome.map(lambda x: "chr" + str(x))
+        chromosomes = df.chromosome.unique().tolist()
+        df.chromosome = df.chromosome.astype('category')
+        # range must represent actual number of chromosomes; here we have only chromosome 1
+        df.chromosome = df.chromosome.cat.set_categories(chromosomes, ordered=True)
 
-    # create an index for the x-axis and group by chromosome
-    df['ind'] = range(len(df))
-    df_grouped = df.groupby('chromosome')
+        df = df.sort_values(['chromosome', 'position'])
 
-    # manhattan plot
-    fig = plt.figure(figsize=(14, 8))  # Set the figure size
-    ax = fig.add_subplot(111)
+        # create an index for the x-axis and group by chromosome
+        df['ind'] = range(len(df))
+        df_grouped = df.groupby('chromosome')
 
-    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
-    x_labels = []
-    x_labels_pos = []
-    for num, (name, group) in enumerate(df_grouped):
-        group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-        x_labels.append(name)
-        x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
-    ax.set_xticks(x_labels_pos)
-    ax.set_xticklabels(x_labels)
+        # manhattan plot
+        fig = plt.figure(figsize=(14, 8))  # Set the figure size
+        ax = fig.add_subplot(111)
 
-    # set axis limits
-    ax.set_xlim([0, len(df)])
+        colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
+        x_labels = []
+        x_labels_pos = []
+        for num, (name, group) in enumerate(df_grouped):
+            group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
+            x_labels.append(name)
+            x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
+        ax.set_xticks(x_labels_pos)
+        ax.set_xticklabels(x_labels)
 
-    max_y = df["minuslog10pvalue"].max()
-    ax.set_ylim([0, max_y])
+        # set axis limits
+        ax.set_xlim([0, len(df)])
 
-    # x axis label
-    ax.set_xlabel('Chromosome')
+        max_y = df["minuslog10pvalue"].max()
+        ax.set_ylim([0, max_y])
 
-    # set title
-    if title is None:
-        title_string = "GWAS plot"
-    else:
-        title_string = f"GWAS plot for {title}"
+        # x axis label
+        ax.set_xlabel('Chromosome')
 
-    plt.title(title_string)
+        # set title
+        title_string = f"GWAS plot for {gwas_method}"
 
-    # show the graph
-    if save_path:
-        plt.savefig(save_path)
-        print(f"{save_path} saved.")
+        plt.title(title_string)
 
-    if show_plot:
-        plt.show()
+        # show the graph
+        if save_path:
+            png_file = save_path + "_manh.png"
+            plt.savefig(png_file)
+            print(f"{png_file} saved.")
+
+        if show_plot:
+            plt.show()
+
+        plt.clf()  # clear figure
 
 
 def qqplot(gwas_data: list, save_path: str = None):
@@ -215,11 +217,13 @@ def qqplot(gwas_data: list, save_path: str = None):
     plt.legend(labels=legend_labels)
 
     if save_path:
-        diagram.figure.savefig(save_path)
+        png_file = save_path + "_qq.png"
+        diagram.figure.savefig(png_file)
+        print(f"{png_file} saved.")
 
     plt.show()
 
-    pass
+    plt.clf()  # clear figure
 
 
 def process_result_file(glob_files: object, sep: str, col_chrom: int, col_pos: int, col_p: int,
@@ -353,13 +357,12 @@ if args.input:
 
 # create manhattan plot
 if args.saveplot:
-    save_plot_path = str(os.path.join(args.resultdir, args.saveplot)) + ".png"
-    save_qqplot_path = str(os.path.join(args.resultdir, args.saveplot)) + "_qq.png"
+    save_plot_path = str(os.path.join(args.resultdir, args.saveplot))
 else:
     save_plot_path = None
-    save_qqplot_path = None
 
-# manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
-if args.input or args.resultfile:
+if args.input:
+    manhattan_plot(all_results, show_plot=args.showplot, save_path=save_plot_path)
+
     # qqplot for multiple result data
-    qqplot(all_results, save_path=save_qqplot_path)
+    qqplot(all_results, save_path=save_plot_path)
