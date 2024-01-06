@@ -130,87 +130,99 @@ def manhattan_plot(gwas_data: DataFrame, title: str = None,
         plt.show()
 
 
-def qqplot(gwas_data: DataFrame, save_path: str = None):
+def qqplot(gwas_data: list, save_path: str = None):
+
     # pvals <- read.table("DGI_chr3_pvals.txt", header=T)
+    legend_labels = list()
+    diagram = None
 
-    df = gwas_data.copy()
+    for single_gwas_data in gwas_data:
 
-    # rename columns
-    df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
+        df = single_gwas_data["result_df"].copy()
+        gwas_method = single_gwas_data["method"]
+        legend_labels.append(gwas_method)
 
-    # observed <- sort(pvals$PVAL)
-    df_sorted = df.sort_values("pvalue")
+        # rename columns
+        df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
-    # -log_10(pvalue)
-    # lobs <- -(log10(observed))
-    df_sorted['minuslog10pvalue'] = -np.log10(df_sorted.pvalue)
+        # observed <- sort(pvals$PVAL)
+        df_sorted = df.sort_values("pvalue")
 
-    # expected <- c(1:length(observed))
-    number_of_rows = len(df_sorted)
-    df_sorted['expected'] = range(1, number_of_rows + 1)
+        # -log_10(pvalue)
+        # lobs <- -(log10(observed))
+        df_sorted['minuslog10pvalue'] = -np.log10(df_sorted.pvalue)
 
-    # lexp <- -(log10(expected / (length(expected)+1)))
-    df_sorted['minuslog10expected'] = -np.log10(df_sorted.expected / (number_of_rows + 1))
+        # expected <- c(1:length(observed))
+        number_of_rows = len(df_sorted)
+        df_sorted['expected'] = range(1, number_of_rows + 1)
 
-    # pdf("qqplot.pdf", width=6, height=6)
-    # plot(c(0,7), c(0,7), col="red", lwd=3, type="l", xlab="Expected (-logP)",
-    # ylab="Observed (-logP)", xlim=c(0,7), ylim=c(0,7), las=1, xaxs="i", yaxs="i", bty="l")
-    # points(lexp, lobs, pch=23, cex=.4, bg="black")
+        # lexp <- -(log10(expected / (length(expected)+1)))
+        df_sorted['minuslog10expected'] = -np.log10(df_sorted.expected / (number_of_rows + 1))
 
-    # create Q-Q plot with 45-degree line added to plot
-    # fig = sm.qqplot(data, line='45')
+        # pdf("qqplot.pdf", width=6, height=6)
+        # plot(c(0,7), c(0,7), col="red", lwd=3, type="l", xlab="Expected (-logP)",
+        # ylab="Observed (-logP)", xlim=c(0,7), ylim=c(0,7), las=1, xaxs="i", yaxs="i", bty="l")
+        # points(lexp, lobs, pch=23, cex=.4, bg="black")
 
-    # sns.lineplot(x="expected", y="minuslog10expected", data=df_sorted)
-    # sm.qqplot(df_sorted.minuslog10pvalue)
+        # create Q-Q plot with 45-degree line added to plot
+        # fig = sm.qqplot(data, line='45')
 
-    # now plot these two arrays against each other using matplotlib
-    # retrive pmin, the most significant (i.e. min) p value (for defining the axes)
-    # pmin = df_sorted['minuslog10pvalue'][0]
+        # sns.lineplot(x="expected", y="minuslog10expected", data=df_sorted)
+        # sm.qqplot(df_sorted.minuslog10pvalue)
 
-    first = df_sorted['minuslog10pvalue'].iloc[0]
-    axisMax = math.ceil(first)
+        # now plot these two arrays against each other using matplotlib
+        # retrive pmin, the most significant (i.e. min) p value (for defining the axes)
+        # pmin = df_sorted['minuslog10pvalue'][0]
 
-    # fig = plt.figure()
+        first = df_sorted['minuslog10pvalue'].iloc[0]
+        axisMax = math.ceil(first)
 
-    # plt.xlim([0, axisMax])
-    # plt.xlabel("Expected")
+        # fig = plt.figure()
 
-    # plt.ylim([0, axisMax])
-    # plt.ylabel("Observed")
+        # plt.xlim([0, axisMax])
+        # plt.xlabel("Expected")
 
-    # plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
+        # plt.ylim([0, axisMax])
+        # plt.ylabel("Observed")
 
-    # the observed vs. expected data
-    # dataAx = fig.add_subplot(111)
+        # plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
 
-    # dataAx.set_xlim([0, axisMax])
-    # dataAx.set_ylim([0, axisMax])
-    # dataAx.set_xlabel('Expected')
-    # dataAx.set_ylabel('Observed')
+        # the observed vs. expected data
+        # dataAx = fig.add_subplot(111)
 
-    # dataAx.plot(df_sorted.minuslog10pvalue, df_sorted.minuslog10expected, 'r.')  # red dots
+        # dataAx.set_xlim([0, axisMax])
+        # dataAx.set_ylim([0, axisMax])
+        # dataAx.set_xlabel('Expected')
+        # dataAx.set_ylabel('Observed')
 
-    # a diagonal line for comparison
-    # lineAx = fig.add_subplot(1, 1, 1)
-    # dataAx.plot([0, axisMax], [0, axisMax], 'b-')  # blue line
+        # dataAx.plot(df_sorted.minuslog10pvalue, df_sorted.minuslog10expected, 'r.')  # red dots
 
-    # qq = sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted)
-    qq = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted, color='red')
-    sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted, color='blue')
-    qq.set(xlabel="Expected", ylabel="Observed",
-           title='Observed vs. Expected distribution of p-values (-log10)')
+        # a diagonal line for comparison
+        # lineAx = fig.add_subplot(1, 1, 1)
+        # dataAx.plot([0, axisMax], [0, axisMax], 'b-')  # blue line
 
-    plt.legend(labels=['MANTA'])
+        # qq = sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted)
+        single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted)  # color='red'
+        if diagram is None:
+            diagram = single_plot
+
+
+    # sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted, color='blue')
+    if diagram:
+        diagram.set(xlabel="Expected", ylabel="Observed",
+                    title='Observed vs. Expected distribution of p-values (-log10)')
+
+    plt.legend(labels=legend_labels)
 
     if save_path:
-        qq.figure.savefig(save_path)
+        diagram.figure.savefig(save_path)
 
     plt.show()
 
     pass
 
 
-def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_p: int,
+def process_result_file(glob_files: object, sep: str, col_chrom: int, col_pos: int, col_p: int,
                         verbose: bool = False) -> DataFrame:
 
     df = DataFrame()
@@ -249,7 +261,7 @@ def process_result_file(glob_files, sep: str, col_chrom: int, col_pos: int, col_
     return df
 
 
-def read_result_file(result_dir, result_row):
+def read_result_file(result_dir, result_row) -> (str, DataFrame):
 
     # get relevant columns
     row_method = result_row[['method']].item()
@@ -276,13 +288,12 @@ def read_result_file(result_dir, result_row):
 
         result_df = process_result_file(glob_files=g, sep=args.sep,
                                         col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
-        result_df["method"] = row_method
 
     except Exception as e:
         print(e)
         exit(1)
 
-    return result_df
+    return row_method, result_df
 
 
 # ------------------------------------------------------------------------------
@@ -297,18 +308,8 @@ parser = argparse.ArgumentParser(description='create plots for GWAS results.',
 
 parser.add_argument('--resultdir', action='store', default='.',
                     help='directory containing GWAS results', required=True)
-parser.add_argument('--resultfile', action='store',
-                    help='regular expression for result files, e.g. "manta*.txt"')
 parser.add_argument('--sep', action='store',
                     help='separator', default="\t")
-parser.add_argument('--col_chrom', action='store',
-                    help='column number of CHROM', type=int)
-parser.add_argument('--col_pos', action='store',
-                    help='column number of POS', type=int)
-parser.add_argument('--col_p', action='store',
-                    help='column number of p-value', type=int)
-parser.add_argument('--title', action='store',
-                    help='title of plot')
 parser.add_argument('--sample', action='store_true',
                     help='sample Manhattan plot')
 parser.add_argument('--showplot', action='store_true', default=False,
@@ -322,7 +323,15 @@ parser.add_argument('--input', action='store',
 
 args = parser.parse_args()
 
-print("GWAS plots v0.1")
+print("GWAS plots v0.2")
+
+result_df = None
+all_results = list()
+
+# show sample
+if args.sample:
+    manhattan_plot_sample()
+    exit(0)
 
 if args.input:
     print(f"input csv: {args.input}")
@@ -330,48 +339,17 @@ if args.input:
     try:
         gwas_input = pd.read_csv(args.input, sep=",")
 
+        # collect all results
         for index, row in gwas_input.iterrows():
-            result_df = read_result_file(result_dir=args.resultdir, result_row=row)
+            method, result_df = read_result_file(result_dir=args.resultdir, result_row=row)
+
+            single_result = dict()
+            single_result["method"] = method
+            single_result["result_df"] = result_df
+            all_results.append(single_result)
 
     except Exception as e:
         print(e)
-
-    exit(0)
-
-# show sample
-if args.sample:
-    manhattan_plot_sample()
-    exit(0)
-
-# print arguments
-if args.verbose:
-    print(f"result directory: {args.resultdir}")
-    print(f"result file: {args.resultfile}")
-
-# get relevant columns
-column_chrom = args.col_chrom - 1
-column_pos = args.col_pos - 1
-column_p = args.col_p - 1
-
-# read result file
-try:
-    result_file_glob = os.path.join(args.resultdir, args.resultfile)
-
-    g = glob.glob(result_file_glob)
-    len_g = len(g)
-    if len_g == 0:
-        print("no files found")
-        exit(1)
-    else:
-        print(f"{len_g} files found")
-
-    result_df = process_result_file(glob_files=g, sep=args.sep,
-                                    col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
-
-except Exception as e:
-    print(e)
-    exit(1)
-
 
 # create manhattan plot
 if args.saveplot:
@@ -382,4 +360,6 @@ else:
     save_qqplot_path = None
 
 # manhattan_plot(result_df, title=args.title, show_plot=args.showplot, save_path=save_plot_path)
-qqplot(result_df, save_path=save_qqplot_path)
+if args.input or args.resultfile:
+    # qqplot for multiple result data
+    qqplot(all_results, save_path=save_qqplot_path)
