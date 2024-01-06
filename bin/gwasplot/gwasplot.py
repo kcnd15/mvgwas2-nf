@@ -122,7 +122,7 @@ def manhattan_plot(gwas_data: list, show_plot: bool = True, save_path: str = Non
 
         # show the graph
         if save_path:
-            png_file = save_path + "_manh.png"
+            png_file = save_path + "_" + gwas_method + "_manh.png"
             plt.savefig(png_file)
             print(f"{png_file} saved.")
 
@@ -324,6 +324,8 @@ parser.add_argument('--verbose', action='store_true', default=False,
                     help='verbose output')
 parser.add_argument('--input', action='store',
                     help='input csv for all method results')
+parser.add_argument('--plot', action='store', default=[], nargs='+',
+                    help='select plots of manh, qq')
 
 args = parser.parse_args()
 
@@ -362,7 +364,9 @@ else:
     save_plot_path = None
 
 if args.input:
-    manhattan_plot(all_results, show_plot=args.showplot, save_path=save_plot_path)
+    if "manh" in args.plot:
+        manhattan_plot(all_results, show_plot=args.showplot, save_path=save_plot_path)
 
-    # qqplot for multiple result data
-    qqplot(all_results, save_path=save_plot_path)
+    if "qq" in args.plot:
+        # qqplot for multiple result data
+        qqplot(all_results, save_path=save_plot_path)
