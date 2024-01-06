@@ -136,7 +136,8 @@ def qqplot(gwas_data: list, save_path: str = None):
 
     # pvals <- read.table("DGI_chr3_pvals.txt", header=T)
     legend_labels = list()
-    diagram = None
+
+    plt.clf()  # clear figure
 
     for single_gwas_data in gwas_data:
 
@@ -187,8 +188,6 @@ def qqplot(gwas_data: list, save_path: str = None):
         # plt.ylim([0, axisMax])
         # plt.ylabel("Observed")
 
-        # plt.title("QQ Plot: Observed vs. Expected distribution of p values (-log10)")
-
         # the observed vs. expected data
         # dataAx = fig.add_subplot(111)
 
@@ -205,25 +204,33 @@ def qqplot(gwas_data: list, save_path: str = None):
 
         # qq = sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted)
         single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted)  # color='red'
-        if diagram is None:
-            diagram = single_plot
 
-
-    # sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted, color='blue')
-    if diagram:
-        diagram.set(xlabel="Expected", ylabel="Observed",
-                    title='Observed vs. Expected distribution of p-values (-log10)')
-
+    # show legend
     plt.legend(labels=legend_labels)
+
+    # get current figure / Axis
+    # fig = plt.gcf()  # matplotlob.pyplot reference
+    ax = plt.gca() # get Axes reference created by seaborn
+    ax.set(xlabel="Expected", ylabel="Observed",
+           title='Observed vs. Expected distribution of p-values (-log10)')
+    ax.grid(visible=True)
+
+    # plot reference line
+    left, right = plt.xlim()
+    bottom, top = plt.ylim()
+    top_floor = math.floor(top)
+    point1 = [0, 0]
+    point2 = [top_floor, top_floor]
+    x_values = [point1[0], point2[0]]
+    y_values = [point1[1], point2[1]]
+    plt.plot(x_values, y_values, linestyle="-", color="black")
 
     if save_path:
         png_file = save_path + "_qq.png"
-        diagram.figure.savefig(png_file)
+        ax.figure.savefig(png_file)
         print(f"{png_file} saved.")
 
     plt.show()
-
-    plt.clf()  # clear figure
 
 
 def process_result_file(glob_files: object, sep: str, col_chrom: int, col_pos: int, col_p: int,
