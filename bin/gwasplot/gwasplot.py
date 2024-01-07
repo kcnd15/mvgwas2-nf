@@ -48,7 +48,7 @@ def preprocess_result(single_gwas_data: dict):
     return df, df_grouped
 
 
-def manhattan_plot(single_gwas_data: dict,
+def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
                    show_plot: bool = True, save_path: str = None):
 
     # ----------------------------------
@@ -80,60 +80,14 @@ def manhattan_plot(single_gwas_data: dict,
     # display the manhattan plot
     # ----------------------------
 
-    fig = plt.figure(figsize=(14, 8))  # Set the figure size for width, height in inches
+    fig = plt.figure(figsize=(figsize[0], figsize[1]))  # Set the figure size for width, height in inches
     plt.clf()  # clear any previous figures
 
     ax = fig.add_subplot(111)  # nrows, ncols, index
 
-    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
-    x_labels = []
-    x_labels_pos = []
-
-    # process all groups, here chromosomes
-    for num, (name, group) in enumerate(df_grouped):
-        # group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-        group.plot(kind='scatter', x='position', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-
-        pos1 = (group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2)
-        p1 = group['ind'].iloc[-1]
-        p2 = group['ind'].iloc[0]
-        pos2 = p1 - (p1 - p2) / 2
-
-        group_min = group["position"].min()
-        group_max = group["position"].max()
-
-        x_labels.append(str(group_min))
-        x_labels_pos.append(group_min)
-
-        # label and position of chromosome, e.g. CHR22
-        x_labels.append(name)
-        # x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
-        group_x = group_max - (group_max - group_min) / 2
-        x_labels_pos.append(group_x)
-
-        x_labels.append(str(group_max))
-        x_labels_pos.append(group_max)
-
-    # -----------------------
-    # final layout settings
-    # -----------------------
-    # set x-labels and ticks
-    ax.set_xticks(x_labels_pos)
-    ax.set_xticklabels(x_labels)
-
-    # set axis limits
-    # min, max values of positions
-    position_min = df["position"].min()
-    position_max = df["position"].max()
-    # ax.set_xlim([0, len(df)])
-    ax.set_xlim([position_min, position_max])
-
-    max_y = df["minuslog10pvalue"].max()
-    ax.set_ylim([0, max_y])
-
-    # x axis label
-    ax.set_xlabel('Chromosome')
-
+    # create plot
+    plot_single_manhattan(gwas_method=gwas_method, df=df, df_grouped=df_grouped,
+                          colors=method_colors[gwas_method], ax=ax, y_orientation_up=True)
     # set title
     title_string = f"GWAS plot for {gwas_method}"
 
@@ -150,7 +104,8 @@ def manhattan_plot(single_gwas_data: dict,
         plt.show()
 
 
-def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = None):
+def miami_plot_all(gwas_data: list, method_colors: dict, figsize: tuple,
+                   show_plot: bool = False, save_path: str = None):
 
     number_of_methods = len(gwas_data)
 
@@ -177,11 +132,6 @@ def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = No
         pair_list.append(el_list)
 
     # compare all pairs with a Miami plot
-    method_colors = {
-        "GEMMA": ['peru', 'darkgreen', 'darkblue', 'gold'],
-        "MANTA": ['green', 'blue', 'grey', 'red'],
-        "MOSTest": ['royalblue', 'pink', 'lightgreen', 'yellow'],
-    }
 
     for pair in pair_list:
         method1 = gwas_data[pair[0]]
@@ -190,7 +140,7 @@ def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = No
         method1["colors"] = method_colors[method1["method"]]
         method2["colors"] = method_colors[method2["method"]]
 
-        miami_plot(gwas_data1=method1, gwas_data2=method2, show_plot=show_plot, save_path=save_path)
+        miami_plot(gwas_data1=method1, gwas_data2=method2, figsize=figsize, show_plot=show_plot, save_path=save_path)
 
     pass
 
@@ -243,7 +193,8 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
     ax.set_xlabel(f"{gwas_method} ({number_of_variants} variants)", fontweight="bold")
     ax.set_ylabel("-log10(pvalue)")
 
-def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, save_path: str = None):
+def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
+               show_plot: bool = False, save_path: str = None):
 
     method1 = gwas_data1['method']
     method2 = gwas_data2['method']
@@ -262,8 +213,8 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, sav
 
     # create graph with 2 rows and 1 column
     fig, axs = plt.subplots(2, 1, layout='constrained')
-    fig.set_figwidth(18)
-    fig.set_figheight(10)
+    fig.set_figwidth(figsize[0])
+    fig.set_figheight(figsize[1])
 
     # create first manhattan plot, upwards
     plot_single_manhattan(gwas_method=method1, df=df1, df_grouped=df1_grouped,
@@ -289,7 +240,7 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, sav
     pass
 
 
-def qqplot(gwas_data: list, save_path: str = None):
+def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str = None):
 
     legend_labels = list()
 
@@ -317,7 +268,8 @@ def qqplot(gwas_data: list, save_path: str = None):
         first = df_sorted['minuslog10pvalue'].iloc[0]
         axisMax = math.ceil(first)
 
-        single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted)  # color='red'
+        single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected",
+                                      data=df_sorted, color=method_colors[gwas_method][0])
 
     # show legend
     plt.legend(labels=legend_labels)
@@ -327,6 +279,9 @@ def qqplot(gwas_data: list, save_path: str = None):
     ax.set(xlabel="Expected", ylabel="Observed",
            title='Observed vs. Expected distribution of p-values (-log10)')
     ax.grid(visible=True)
+
+    ax.figure.set_figwidth(figsize[0])
+    ax.figure.set_figheight(figsize[1])
 
     # plot reference line
     left, right = plt.xlim()
@@ -477,6 +432,15 @@ if args.saveplot:
 else:
     save_plot_path = None
 
+# general plotting settings
+gwas_method_colors = {
+    "GEMMA": ['peru', 'darkgreen', 'darkblue', 'gold'],
+    "MANTA": ['green', 'blue', 'grey', 'red'],
+    "MOSTest": ['royalblue', 'pink', 'lightgreen', 'yellow'],
+}
+
+figure_size = (18, 10)  # width, height
+
 # default settings for the plots
 if args.plot:
     plt.rc('font', size=16)          # controls default text sizes
@@ -484,11 +448,13 @@ if args.plot:
 if args.input:
     if "manh" in args.plot:
         for single_result in all_results:
-            manhattan_plot(single_result, show_plot=args.showplot, save_path=save_plot_path)
+            manhattan_plot(single_result, method_colors=gwas_method_colors, figsize=figure_size,
+                           show_plot=args.showplot, save_path=save_plot_path)
 
     if "miami" in args.plot:
-        miami_plot_all(all_results, show_plot=args.showplot, save_path=save_plot_path)
+        miami_plot_all(all_results, method_colors=gwas_method_colors, figsize=figure_size,
+                       show_plot=args.showplot, save_path=save_plot_path)
 
     if "qq" in args.plot:
         # qqplot for multiple result data
-        qqplot(all_results, save_path=save_plot_path)
+        qqplot(all_results, method_colors=gwas_method_colors, figsize=figure_size, save_path=save_plot_path)
