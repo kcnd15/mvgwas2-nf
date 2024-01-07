@@ -228,9 +228,9 @@ def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = No
 
     # compare all pairs with a Miami plot
     method_colors = {
-        "GEMMA": ['darkred', 'darkgreen', 'darkblue', 'gold'],
-        "MANTA": ['yellow', 'blue', 'grey', 'red'],
-        "MOSTest": ['grey', 'pink', 'lightgreen', 'yellow'],
+        "GEMMA": ['peru', 'darkgreen', 'darkblue', 'gold'],
+        "MANTA": ['green', 'blue', 'grey', 'red'],
+        "MOSTest": ['royalblue', 'pink', 'lightgreen', 'yellow'],
     }
 
     for pair in pair_list:
