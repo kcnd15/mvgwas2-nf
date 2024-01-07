@@ -137,7 +137,7 @@ def manhattan_plot(single_gwas_data: dict,
     # set title
     title_string = f"GWAS plot for {gwas_method}"
 
-    plt.title(title_string)
+    plt.title(title_string, fontweight="bold")
 
     # save the graph
     if save_path:
@@ -153,8 +153,6 @@ def manhattan_plot(single_gwas_data: dict,
 def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = None):
 
     number_of_methods = len(gwas_data)
-
-    print(f"miami_plot_all for {number_of_methods} methods")
 
     # get all comparison pairs
     comparisons = set()
@@ -192,7 +190,6 @@ def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = No
         method1["colors"] = method_colors[method1["method"]]
         method2["colors"] = method_colors[method2["method"]]
 
-        print(f"starting Miami plot for {method1['method']} and {method2['method']}")
         miami_plot(gwas_data1=method1, gwas_data2=method2, show_plot=show_plot, save_path=save_path)
 
     pass
@@ -241,15 +238,15 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
     else:
         ax.set_ylim([max_y, 0])
 
-    # x axis label
-    ax.set_xlabel(gwas_method)
+    # axis labels
+    number_of_variants = len(df)
+    ax.set_xlabel(f"{gwas_method} ({number_of_variants} variants)", fontweight="bold")
+    ax.set_ylabel("-log10(pvalue)")
 
 def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, save_path: str = None):
 
     method1 = gwas_data1['method']
     method2 = gwas_data2['method']
-
-    print(f"Miami plot for {method1} and {method2}")
 
     # preprocess data
     df1, df1_grouped = preprocess_result(gwas_data1)
@@ -265,6 +262,8 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, sav
 
     # create graph with 2 rows and 1 column
     fig, axs = plt.subplots(2, 1, layout='constrained')
+    fig.set_figwidth(18)
+    fig.set_figheight(10)
 
     # create first manhattan plot, upwards
     plot_single_manhattan(gwas_method=method1, df=df1, df_grouped=df1_grouped,
@@ -275,7 +274,7 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, sav
                           colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False)
 
     # super title
-    fig.suptitle("Miami plot")
+    fig.suptitle("Miami plot", fontweight="bold")
 
     # save the graph
     if save_path:
@@ -477,6 +476,10 @@ if args.saveplot:
     save_plot_path = str(os.path.join(args.resultdir, args.saveplot))
 else:
     save_plot_path = None
+
+# default settings for the plots
+if args.plot:
+    plt.rc('font', size=16)          # controls default text sizes
 
 if args.input:
     if "manh" in args.plot:
