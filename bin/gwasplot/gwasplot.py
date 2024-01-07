@@ -50,7 +50,7 @@ def preprocess_result(single_gwas_data: dict):
 
 
 def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
-                   show_plot: bool = True, save_path: str = None):
+                   show_plot: bool = True, save_path: str = None, significance_level_log: float = None):
 
     # ----------------------------------
     # preprocessing of the result data
@@ -88,7 +88,8 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
 
     # create plot
     plot_single_manhattan(gwas_method=gwas_method, df=df, df_grouped=df_grouped,
-                          colors=method_colors[gwas_method], ax=ax, y_orientation_up=True)
+                          colors=method_colors[gwas_method], ax=ax, y_orientation_up=True,
+                          significance_level_log=significance_level_log)
     # set title
     title_string = f"GWAS plot for {gwas_method}"
 
@@ -106,7 +107,8 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
 
 
 def miami_plot_all(gwas_data: list, method_colors: dict, figsize: tuple,
-                   show_plot: bool = False, save_path: str = None):
+                   show_plot: bool = False, save_path: str = None,
+                   significance_level_log: float = None):
 
     number_of_methods = len(gwas_data)
 
@@ -141,12 +143,16 @@ def miami_plot_all(gwas_data: list, method_colors: dict, figsize: tuple,
         method1["colors"] = method_colors[method1["method"]]
         method2["colors"] = method_colors[method2["method"]]
 
-        miami_plot(gwas_data1=method1, gwas_data2=method2, figsize=figsize, show_plot=show_plot, save_path=save_path)
+        miami_plot(gwas_data1=method1, gwas_data2=method2, figsize=figsize,
+                   show_plot=show_plot, save_path=save_path,
+                   significance_level_log=significance_level_log)
 
     pass
 
 
-def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation_up: bool = True):
+def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation_up: bool = True,
+                          position_min: int = 0, position_max: int = 0,
+                          significance_level_log: float = None):
 
     # list of labels and their positions
     x_labels = []
@@ -173,17 +179,41 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
     # -----------------------
     # final layout settings
     # -----------------------
+
+
+    # set axis limits
+    # min, max values of positions
+    df_position_min = df["position"].min()
+    df_position_max = df["position"].max()
+    if (position_min > 0) and (position_max > 0):
+        # common min/max position of both GWAS method results is given
+        ax.set_xlim([position_min, position_max])
+
+        # correct first and last xlabel and its position
+        x_labels_pos[0] = position_min
+        x_labels[0] = str(position_min)
+
+        x_labels_pos[-1] = position_max
+        x_labels[-1] = str(position_max)
+
+    else:
+        # use min/max of this GWAS method
+        ax.set_xlim([df_position_min, df_position_max])
+
     # set x-labels and ticks
     ax.set_xticks(x_labels_pos)
     ax.set_xticklabels(x_labels)
 
-    # set axis limits
-    # min, max values of positions
-    position_min = df["position"].min()
-    position_max = df["position"].max()
-    ax.set_xlim([position_min, position_max])
+    max_y_data = df["minuslog10pvalue"].max()
+    if significance_level_log is None:
+        max_y = max_y_data
+    else:
+        max_y = max(max_y_data, significance_level_log)
+        max_y = math.ceil(max_y)
 
-    max_y = df["minuslog10pvalue"].max()
+        # plot line of significance level
+        ax.axhline(y=significance_level_log, color="red")
+
     if y_orientation_up:
         ax.set_ylim([0, max_y])
     else:
@@ -195,7 +225,7 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
     ax.set_ylabel("-log10(pvalue)")
 
 def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
-               show_plot: bool = False, save_path: str = None):
+               show_plot: bool = False, save_path: str = None, significance_level_log: float = None):
 
     method1 = gwas_data1['method']
     method2 = gwas_data2['method']
@@ -219,11 +249,15 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
 
     # create first manhattan plot, upwards
     plot_single_manhattan(gwas_method=method1, df=df1, df_grouped=df1_grouped,
-                          colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True)
+                          colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True,
+                          position_min=position_min, position_max=position_max,
+                          significance_level_log=significance_level_log)
 
     # create second manhattan plot, downwards
     plot_single_manhattan(gwas_method=method2, df=df2, df_grouped=df2_grouped,
-                          colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False)
+                          colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False,
+                          position_min=position_min, position_max=position_max,
+                          significance_level_log=significance_level_log)
 
     # super title
     fig.suptitle("Miami plot", fontweight="bold")
@@ -431,11 +465,6 @@ def read_result_file(result_dir, result_row,
 
         g = glob.glob(result_file_glob)
         len_g = len(g)
-        if len_g == 0:
-            print("no files found")
-            exit(1)
-        else:
-            print(f"{len_g} files found")
 
         result_df, number_of_na_found, all_outliers, outliers_removed =\
             process_result_file(glob_files=g, sep=args.sep, result_dir=result_dir,
@@ -446,7 +475,7 @@ def read_result_file(result_dir, result_row,
         print(e)
         exit(1)
 
-    return row_method, result_df, number_of_na_found, all_outliers, outliers_removed
+    return row_method, result_df, number_of_na_found, all_outliers, outliers_removed, len_g
 
 
 # ------------------------------------------------------------------------------
@@ -480,7 +509,7 @@ parser.add_argument('--plot', action='store', default=[], nargs='+',
 
 args = parser.parse_args()
 
-print("GWAS plots v0.3")
+print("GWAS plots v1.0")
 
 print("\nparameters used:\n")
 
@@ -504,6 +533,11 @@ print()
 result_df = None
 all_results = list()
 
+significance_level = 5e-8
+significance_level_log = - math.log10(significance_level)
+
+print(f"GWAS significance level: {significance_level}, -log10: {significance_level_log}\n")
+
 # read GWAS result data
 if args.input:
     print(f"input csv: {args.input}")
@@ -514,18 +548,20 @@ if args.input:
         # collect all results
         for index, row in gwas_input.iterrows():
 
-            method, result_df, number_na_found, number_outliers, number_outliers_removed =\
+            method, result_df, number_na_found, number_outliers, number_outliers_removed, files_found =\
                 read_result_file(result_dir=args.resultdir, result_row=row,
                                                  outlier_threshold=outlier_threshold,
                                                  remove_outliers=args.remove_outliers)
 
-            print(f"{method}: NAs: {number_na_found}, " +
+            print(f"{method:10}: NAs: {number_na_found}, files: {files_found} " +
                   f"outlier: {number_outliers}, outlier removed: {number_outliers_removed}")
 
             single_result = dict()
             single_result["method"] = method
             single_result["result_df"] = result_df
             all_results.append(single_result)
+
+        print()
 
     except Exception as e:
         print(e)
@@ -554,11 +590,13 @@ if args.input:
     if "manh" in args.plot:
         for single_result in all_results:
             manhattan_plot(single_result, method_colors=gwas_method_colors, figsize=figure_size,
-                           show_plot=args.showplot, save_path=save_plot_path)
+                           show_plot=args.showplot, save_path=save_plot_path,
+                           significance_level_log=significance_level_log)
 
     if "miami" in args.plot:
         miami_plot_all(all_results, method_colors=gwas_method_colors, figsize=figure_size,
-                       show_plot=args.showplot, save_path=save_plot_path)
+                       show_plot=args.showplot, save_path=save_plot_path,
+                       significance_level_log=significance_level_log)
 
     if "qq" in args.plot:
         # qqplot for multiple result data
