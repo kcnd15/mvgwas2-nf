@@ -304,16 +304,23 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
         first = df_sorted['minuslog10pvalue'].iloc[0]
         axisMax = math.ceil(first)
 
-        single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected",
+        single_plot = sns.scatterplot(x="minuslog10expected", y="minuslog10pvalue", s=150, alpha=1.0,
                                       data=df_sorted, color=method_colors[gwas_method][0])
 
     # show legend
-    plt.legend(labels=legend_labels)
+    default_fontsize = 40
+    legend = plt.legend(labels=legend_labels, fontsize=default_fontsize)
+
+    # show larger legend markers
+    for handle in legend.legendHandles:
+        handle.set_sizes([500.0])
 
     # get current figure / Axis
     ax = plt.gca() # get Axes reference created by seaborn
-    ax.set(xlabel="Expected", ylabel="Observed",
-           title='Observed vs. Expected distribution of p-values (-log10)')
+    ax.set_xlabel("Expected $-log_{10}(p)$", fontweight="bold", fontsize=default_fontsize)
+    ax.set_ylabel("Observed $-log_{10}(p)$", fontweight="bold", fontsize=default_fontsize)
+    ax.set_title("Observed vs. Expected distribution of p-values",
+                 fontweight="bold", fontsize=default_fontsize)
     ax.grid(visible=True)
 
     ax.figure.set_figwidth(figsize[0])
