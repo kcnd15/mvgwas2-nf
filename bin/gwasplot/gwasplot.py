@@ -10,6 +10,7 @@ import pandas as pd
 from pandas import DataFrame
 
 import os
+from datetime import datetime
 import glob
 
 import numpy as np
@@ -243,6 +244,7 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
 def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str = None):
 
     legend_labels = list()
+    number_of_gwas_data = len(gwas_data)
 
     plt.clf()  # clear any previous figures
 
@@ -294,19 +296,27 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
     plt.plot(x_values, y_values, linestyle="-", color="black")
 
     if save_path:
-        png_file = save_path + "_qq.png"
+        if number_of_gwas_data == 1:
+            png_file = save_path + "_" + gwas_data[0]["method"] + "_qq.png"
+        else:
+            png_file = save_path + "_qq.png"
+
         ax.figure.savefig(png_file)
         print(f"{png_file} saved.")
 
     plt.show()
 
 
-def process_result_file(glob_files: object, sep: str, col_chrom: int, col_pos: int, col_p: int,
+def process_result_file(glob_files: object, sep: str, result_dir: str,
+                        outlier_threshold: float,
+                        col_chrom: int, col_pos: int, col_p: int,
                         verbose: bool = False) -> DataFrame:
 
     df = DataFrame()
 
     show_once = True
+    first_outlier_found = False
+    all_outliers_df = DataFrame()
 
     for result_file in glob_files:
         if verbose:
@@ -334,13 +344,44 @@ def process_result_file(glob_files: object, sep: str, col_chrom: int, col_pos: i
         # rename columns to standard names
         result_data_relevant = result_data_relevant.set_axis(["CHROM", "POS", "P"], axis=1)
 
+        # check for outliers
+        outliers_df = result_data_relevant[result_data_relevant["P"] < outlier_threshold]
+        outliers_len = len(outliers_df)
+        if outliers_len > 0:
+            outliers_copy_df = outliers_df.copy()
+            outliers_copy_df["file"] = result_file
+            if not first_outlier_found:
+                first_outlier_found = True
+                all_outliers_df = outliers_copy_df.copy()
+            else:
+                all_outliers_df = pd.concat([all_outliers_df, outliers_copy_df])
+
+            for df_row in range(outliers_len):
+                outlier_chrom = outliers_df["CHROM"].values[df_row]
+                outlier_pos = outliers_df["POS"].values[df_row]
+                outlier_p = outliers_df["P"].values[df_row]
+                if verbose:
+                    print(f"outlier found for {result_file}, CHROM: {outlier_chrom}, POS: {outlier_pos}, P: {outlier_p}")
+
         df = pd.concat([df, result_data_relevant])
+
+    # save outlier report
+    all_outliers_df_len = len(all_outliers_df)
+    if all_outliers_df_len > 0:
+        now = datetime.now()
+        now_formatted =  now.strftime("%Y%m%d_%H%M%S")
+        outlier_file = f"outlier_{now_formatted}.xlsx"
+
+        outlier_path = os.path.join(result_dir, outlier_file)
+        all_outliers_df.to_excel(outlier_path)
+
+        print(f"{all_outliers_df_len} outliers found with p-values < {outlier_threshold} and saved to {outlier_path}")
 
     # return dataframe containing all results
     return df
 
 
-def read_result_file(result_dir, result_row) -> (str, DataFrame):
+def read_result_file(result_dir, result_row, outlier_threshold) -> (str, DataFrame):
 
     # get relevant columns
     row_method = result_row[['method']].item()
@@ -365,7 +406,8 @@ def read_result_file(result_dir, result_row) -> (str, DataFrame):
         else:
             print(f"{len_g} files found")
 
-        result_df = process_result_file(glob_files=g, sep=args.sep,
+        result_df = process_result_file(glob_files=g, sep=args.sep, result_dir=result_dir,
+                                        outlier_threshold=outlier_threshold,
                                         col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
 
     except Exception as e:
@@ -397,17 +439,37 @@ parser.add_argument('--verbose', action='store_true', default=False,
                     help='verbose output')
 parser.add_argument('--input', action='store',
                     help='input csv for all method results')
+parser.add_argument('--outlier_threshold', action='store',
+                    help='threshold for outlier check of p-values', default="1e-10")
 parser.add_argument('--plot', action='store', default=[], nargs='+',
                     help='select plots of manh, qq, miami')
 
 args = parser.parse_args()
 
-print("GWAS plots v0.2")
+print("GWAS plots v0.3")
+
+print("\nparameters used:\n")
+
+sep = "{:02x}x".format(ord(args.sep))
+if sep == "09x":
+    sep = "\\t"
+
+outlier_threshold = float(args.outlier_threshold)
+
+print(f"resultdir        : {args.resultdir}")
+print(f"input            : {args.input}")
+print(f"sep              : {sep}")
+print(f"outlier_threshold: {outlier_threshold}")
+print(f"showplot         : {args.showplot}")
+print(f"saveplot         : {args.saveplot}")
+print(f"plot             : {args.plot}")
+print(f"verbose          : {args.verbose}")
+print()
 
 result_df = None
 all_results = list()
 
-# show sample
+# read GWAS result data
 if args.input:
     print(f"input csv: {args.input}")
 
@@ -416,7 +478,8 @@ if args.input:
 
         # collect all results
         for index, row in gwas_input.iterrows():
-            method, result_df = read_result_file(result_dir=args.resultdir, result_row=row)
+            method, result_df = read_result_file(result_dir=args.resultdir, result_row=row,
+                                                 outlier_threshold=outlier_threshold)
 
             single_result = dict()
             single_result["method"] = method
@@ -426,7 +489,7 @@ if args.input:
     except Exception as e:
         print(e)
 
-# create manhattan plot
+# settings for saving the plots
 if args.saveplot:
     save_plot_path = str(os.path.join(args.resultdir, args.saveplot))
 else:
@@ -445,6 +508,7 @@ figure_size = (18, 10)  # width, height
 if args.plot:
     plt.rc('font', size=16)          # controls default text sizes
 
+# create the plots: Manhattan, Miami and QQ
 if args.input:
     if "manh" in args.plot:
         for single_result in all_results:
