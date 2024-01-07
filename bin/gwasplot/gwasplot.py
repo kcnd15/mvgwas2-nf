@@ -1,9 +1,9 @@
 # gwasplot.py
 # create GWAS plots
 # sample arguments:
-# GEMMA: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "gemma.*.assoc.txt" --col_chrom 1 --col_pos 3 --col_p 73 --title GEMMA --showplot --saveplot gemma_adni
-# MANTA: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "manta*.txt" --col_chrom 1 --col_pos 2 --col_p 8 --title MANTA --saveplot manta_adni
-# MOSTest: --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --resultfile "mostest_results_genotypes.*.most_perm.sumstats" --col_chrom 1 --col_pos 3 --col_p 6 --title MOSTest --saveplot mostest_adni
+# Miami plot for all GWAS methods
+# --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI
+# --input /home/kcan/UOC/tfm/mvgwas2-nf/bin/gwasplot/gwasplot_input.csv --plot miami --saveplot adni --showplot
 
 import argparse
 import pandas as pd
@@ -15,55 +15,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-
-import statsmodels.api as sm
 import seaborn as sns
-
-
-def manhattan_plot_sample():
-
-    # import libraries
-    # from pandas import DataFrame
-    from scipy.stats import uniform
-    from scipy.stats import randint
-
-    # sample data
-    df = DataFrame({'gene': ['gene-%i' % i for i in np.arange(10000)],
-                    'pvalue': uniform.rvs(size=10000),
-                    'chromosome': ['ch-%i' % i for i in randint.rvs(0, 12, size=10000)]})
-
-    # -log_10(pvalue)
-    df['minuslog10pvalue'] = -np.log10(df.pvalue)
-    df.chromosome = df.chromosome.astype('category')
-    df.chromosome = df.chromosome.cat.set_categories(['ch-%i' % i for i in range(12)], ordered=True)
-    df = df.sort_values('chromosome')
-
-    # How to plot gene vs. -log10(pvalue) and colour it by chromosome?
-    df['ind'] = range(len(df))
-    df_grouped = df.groupby('chromosome')
-
-    # manhattan plot
-    fig = plt.figure(figsize=(14, 8))  # Set the figure size
-    ax = fig.add_subplot(111)
-    colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
-    x_labels = []
-    x_labels_pos = []
-    for num, (name, group) in enumerate(df_grouped):
-        group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-        x_labels.append(name)
-        x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
-    ax.set_xticks(x_labels_pos)
-    ax.set_xticklabels(x_labels)
-
-    # set axis limits
-    ax.set_xlim([0, len(df)])
-    ax.set_ylim([0, 3.5])
-
-    # x axis label
-    ax.set_xlabel('Chromosome')
-
-    # show the graph
-    plt.show()
 
 
 def preprocess_result(single_gwas_data: dict):
@@ -241,27 +193,20 @@ def miami_plot_all(gwas_data: list, show_plot: bool = False, save_path: str = No
         method2["colors"] = method_colors[method2["method"]]
 
         print(f"starting Miami plot for {method1['method']} and {method2['method']}")
-        miami_plot(gwas_data1=method1, gwas_data2=method2)
+        miami_plot(gwas_data1=method1, gwas_data2=method2, show_plot=show_plot, save_path=save_path)
 
     pass
 
 
-def plot_manhattan(method, df, df_grouped, colors, ax, y_orientation_up: bool = True):
+def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation_up: bool = True):
 
-    # colors = ['darkred', 'darkgreen', 'darkblue', 'gold']
-
+    # list of labels and their positions
     x_labels = []
     x_labels_pos = []
 
     # process all groups, here chromosomes
     for num, (name, group) in enumerate(df_grouped):
-        # group.plot(kind='scatter', x='ind', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
         group.plot(kind='scatter', x='position', y='minuslog10pvalue', color=colors[num % len(colors)], ax=ax)
-
-        pos1 = (group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2)
-        p1 = group['ind'].iloc[-1]
-        p2 = group['ind'].iloc[0]
-        pos2 = p1 - (p1 - p2) / 2
 
         group_min = group["position"].min()
         group_max = group["position"].max()
@@ -271,7 +216,6 @@ def plot_manhattan(method, df, df_grouped, colors, ax, y_orientation_up: bool = 
 
         # label and position of chromosome, e.g. CHR22
         x_labels.append(name)
-        # x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0])/2))
         group_x = group_max - (group_max - group_min) / 2
         x_labels_pos.append(group_x)
 
@@ -289,7 +233,6 @@ def plot_manhattan(method, df, df_grouped, colors, ax, y_orientation_up: bool = 
     # min, max values of positions
     position_min = df["position"].min()
     position_max = df["position"].max()
-    # ax.set_xlim([0, len(df)])
     ax.set_xlim([position_min, position_max])
 
     max_y = df["minuslog10pvalue"].max()
@@ -299,7 +242,7 @@ def plot_manhattan(method, df, df_grouped, colors, ax, y_orientation_up: bool = 
         ax.set_ylim([max_y, 0])
 
     # x axis label
-    ax.set_xlabel(method)
+    ax.set_xlabel(gwas_method)
 
 def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, save_path: str = None):
 
@@ -320,59 +263,38 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  show_plot: bool = False, sav
     position_min = min(df1_position_min, df2_position_min)
     position_max = max(df1_position_max, df2_position_max)
 
-    # create graph
-
-    # Fixing random state for reproducibility
-    np.random.seed(19680801)
-
-    dt = (df2_position_max - df2_position_min) / 100
-    t = np.arange(position_min, position_max, dt)
-    nse1 = np.random.randn(len(t))                 # white noise 1
-    nse2 = np.random.randn(len(t))                 # white noise 2
-
-    # Two signals with a coherent part at 10 Hz and a random part
-    s1 = np.sin(2 * np.pi * 10 * t) + nse1
-    s2 = np.sin(2 * np.pi * 10 * t) + nse2
-
+    # create graph with 2 rows and 1 column
     fig, axs = plt.subplots(2, 1, layout='constrained')
 
-    if False:
-        axs[0].plot(t, s1, t, s2)
-        axs[0].set_xlim(position_min, position_max)
-        axs[0].set_xlabel(method1)
-        axs[0].set_ylim(-5, 4)
-        axs[0].set_ylabel('ylabel 1')
-        axs[0].grid(True)
+    # create first manhattan plot, upwards
+    plot_single_manhattan(gwas_method=method1, df=df1, df_grouped=df1_grouped,
+                          colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True)
 
-    plot_manhattan(method=method1, df=df1, df_grouped=df1_grouped,
-                   colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True)
+    # create second manhattan plot, downwards
+    plot_single_manhattan(gwas_method=method2, df=df2, df_grouped=df2_grouped,
+                          colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False)
 
-    # cxy, f = axs[1].cohere(s1, s2, 256, 1. / dt)
-    # axs[1].set_ylabel('Coherence')
-
-    if False:
-        axs[1].plot(t, s1, t, s2)
-        axs[1].set_xlim(position_min, position_max)
-        axs[1].set_xlabel(method2)
-        axs[1].set_ylim(4, -5)
-        axs[1].set_ylabel('ylabel 2')
-        axs[1].grid(True)
-
-    plot_manhattan(method=method2, df=df2, df_grouped=df2_grouped,
-                   colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False)
-
+    # super title
     fig.suptitle("Miami plot")
 
-    plt.show()
+    # save the graph
+    if save_path:
+        png_file = save_path + "_" + method1 + "_" + method2 + "_miami.png"
+        plt.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    # show the plot
+    if show_plot:
+        plt.show()
+
     pass
 
 
 def qqplot(gwas_data: list, save_path: str = None):
 
-    # pvals <- read.table("DGI_chr3_pvals.txt", header=T)
     legend_labels = list()
 
-    plt.clf()  # clear figure
+    plt.clf()  # clear any previous figures
 
     for single_gwas_data in gwas_data:
 
@@ -380,71 +302,28 @@ def qqplot(gwas_data: list, save_path: str = None):
         gwas_method = single_gwas_data["method"]
         legend_labels.append(gwas_method)
 
-        # rename columns
+        # preprocess input data
         df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
-        # observed <- sort(pvals$PVAL)
         df_sorted = df.sort_values("pvalue")
 
-        # -log_10(pvalue)
-        # lobs <- -(log10(observed))
         df_sorted['minuslog10pvalue'] = -np.log10(df_sorted.pvalue)
 
-        # expected <- c(1:length(observed))
+        # expected values
         number_of_rows = len(df_sorted)
         df_sorted['expected'] = range(1, number_of_rows + 1)
 
-        # lexp <- -(log10(expected / (length(expected)+1)))
         df_sorted['minuslog10expected'] = -np.log10(df_sorted.expected / (number_of_rows + 1))
-
-        # pdf("qqplot.pdf", width=6, height=6)
-        # plot(c(0,7), c(0,7), col="red", lwd=3, type="l", xlab="Expected (-logP)",
-        # ylab="Observed (-logP)", xlim=c(0,7), ylim=c(0,7), las=1, xaxs="i", yaxs="i", bty="l")
-        # points(lexp, lobs, pch=23, cex=.4, bg="black")
-
-        # create Q-Q plot with 45-degree line added to plot
-        # fig = sm.qqplot(data, line='45')
-
-        # sns.lineplot(x="expected", y="minuslog10expected", data=df_sorted)
-        # sm.qqplot(df_sorted.minuslog10pvalue)
-
-        # now plot these two arrays against each other using matplotlib
-        # retrive pmin, the most significant (i.e. min) p value (for defining the axes)
-        # pmin = df_sorted['minuslog10pvalue'][0]
 
         first = df_sorted['minuslog10pvalue'].iloc[0]
         axisMax = math.ceil(first)
 
-        # fig = plt.figure()
-
-        # plt.xlim([0, axisMax])
-        # plt.xlabel("Expected")
-
-        # plt.ylim([0, axisMax])
-        # plt.ylabel("Observed")
-
-        # the observed vs. expected data
-        # dataAx = fig.add_subplot(111)
-
-        # dataAx.set_xlim([0, axisMax])
-        # dataAx.set_ylim([0, axisMax])
-        # dataAx.set_xlabel('Expected')
-        # dataAx.set_ylabel('Observed')
-
-        # dataAx.plot(df_sorted.minuslog10pvalue, df_sorted.minuslog10expected, 'r.')  # red dots
-
-        # a diagonal line for comparison
-        # lineAx = fig.add_subplot(1, 1, 1)
-        # dataAx.plot([0, axisMax], [0, axisMax], 'b-')  # blue line
-
-        # qq = sns.lineplot(x="minuslog10expected", y="minuslog10expected", data=df_sorted)
         single_plot = sns.scatterplot(x="minuslog10pvalue", y="minuslog10expected", data=df_sorted)  # color='red'
 
     # show legend
     plt.legend(labels=legend_labels)
 
     # get current figure / Axis
-    # fig = plt.gcf()  # matplotlob.pyplot reference
     ax = plt.gca() # get Axes reference created by seaborn
     ax.set(xlabel="Expected", ylabel="Observed",
            title='Observed vs. Expected distribution of p-values (-log10)')
@@ -556,8 +435,6 @@ parser.add_argument('--resultdir', action='store', default='.',
                     help='directory containing GWAS results', required=True)
 parser.add_argument('--sep', action='store',
                     help='separator', default="\t")
-parser.add_argument('--sample', action='store_true',
-                    help='sample Manhattan plot')
 parser.add_argument('--showplot', action='store_true', default=False,
                     help='show plot')
 parser.add_argument('--saveplot', action='store',
@@ -577,10 +454,6 @@ result_df = None
 all_results = list()
 
 # show sample
-if args.sample:
-    manhattan_plot_sample()
-    exit(0)
-
 if args.input:
     print(f"input csv: {args.input}")
 
