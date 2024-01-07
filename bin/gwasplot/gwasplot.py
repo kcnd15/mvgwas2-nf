@@ -307,16 +307,19 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
     plt.show()
 
 
-def process_result_file(glob_files: object, sep: str, result_dir: str,
-                        outlier_threshold: float,
+def process_result_file(glob_files, sep: str, result_dir: str,
+                        outlier_threshold: float, remove_outliers: bool,
                         col_chrom: int, col_pos: int, col_p: int,
-                        verbose: bool = False) -> DataFrame:
+                        verbose: bool = False) -> tuple:
 
     df = DataFrame()
 
     show_once = True
     first_outlier_found = False
     all_outliers_df = DataFrame()
+    outliers_removed = 0
+
+    number_of_na_found = 0
 
     for result_file in glob_files:
         if verbose:
@@ -344,9 +347,17 @@ def process_result_file(glob_files: object, sep: str, result_dir: str,
         # rename columns to standard names
         result_data_relevant = result_data_relevant.set_axis(["CHROM", "POS", "P"], axis=1)
 
+        # check for NANs
+        count_na = result_data_relevant["P"].isna().sum()
+        if count_na > 0:
+            if verbose:
+                print(f"{count_na} NAs in {result_file}")
+            number_of_na_found += count_na
+            result_data_relevant = result_data_relevant.dropna()
+
         # check for outliers
         outliers_df = result_data_relevant[result_data_relevant["P"] < outlier_threshold]
-        outliers_len = len(outliers_df)
+        outliers_len = len(outliers_df.index)
         if outliers_len > 0:
             outliers_copy_df = outliers_df.copy()
             outliers_copy_df["file"] = result_file
@@ -363,6 +374,22 @@ def process_result_file(glob_files: object, sep: str, result_dir: str,
                 if verbose:
                     print(f"outlier found for {result_file}, CHROM: {outlier_chrom}, POS: {outlier_pos}, P: {outlier_p}")
 
+            if remove_outliers:
+                len_result_data_relevant_before = len(result_data_relevant.index)
+                result_data_relevant = result_data_relevant[result_data_relevant["P"] >= outlier_threshold]
+                # result_data_relevant_ok = result_data_relevant[result_data_relevant["P"] >= outlier_threshold]
+                # result_data_relevant_notok = result_data_relevant[result_data_relevant["P"] < outlier_threshold]
+
+                # result_data_relevant = result_data_relevant_ok.copy()
+                len_result_data_relevant_after = len(result_data_relevant.index)
+
+                number_of_outliers_removed = len_result_data_relevant_before - len_result_data_relevant_after
+
+                outliers_removed += number_of_outliers_removed
+                if verbose and number_of_outliers_removed > 0:
+                    print(f"{number_of_outliers_removed} outliers removed")
+
+        # append result data of current file
         df = pd.concat([df, result_data_relevant])
 
     # save outlier report
@@ -375,13 +402,17 @@ def process_result_file(glob_files: object, sep: str, result_dir: str,
         outlier_path = os.path.join(result_dir, outlier_file)
         all_outliers_df.to_excel(outlier_path)
 
-        print(f"{all_outliers_df_len} outliers found with p-values < {outlier_threshold} and saved to {outlier_path}")
+        # print(f"{all_outliers_df_len} outliers found with p-values < {outlier_threshold} and saved to {outlier_path}")
+        # print(f"{outliers_removed} outliers removed")
+
+    # print(f"{number_of_na_found} NAs found")
 
     # return dataframe containing all results
-    return df
+    return df, number_of_na_found, all_outliers_df_len, outliers_removed
 
 
-def read_result_file(result_dir, result_row, outlier_threshold) -> (str, DataFrame):
+def read_result_file(result_dir, result_row,
+                     outlier_threshold, remove_outliers: bool = False) -> tuple:
 
     # get relevant columns
     row_method = result_row[['method']].item()
@@ -406,15 +437,16 @@ def read_result_file(result_dir, result_row, outlier_threshold) -> (str, DataFra
         else:
             print(f"{len_g} files found")
 
-        result_df = process_result_file(glob_files=g, sep=args.sep, result_dir=result_dir,
-                                        outlier_threshold=outlier_threshold,
+        result_df, number_of_na_found, all_outliers, outliers_removed =\
+            process_result_file(glob_files=g, sep=args.sep, result_dir=result_dir,
+                                        outlier_threshold=outlier_threshold, remove_outliers=remove_outliers,
                                         col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
 
     except Exception as e:
         print(e)
         exit(1)
 
-    return row_method, result_df
+    return row_method, result_df, number_of_na_found, all_outliers, outliers_removed
 
 
 # ------------------------------------------------------------------------------
@@ -441,6 +473,8 @@ parser.add_argument('--input', action='store',
                     help='input csv for all method results')
 parser.add_argument('--outlier_threshold', action='store',
                     help='threshold for outlier check of p-values', default="1e-10")
+parser.add_argument('--remove_outliers', action='store_true', default=False,
+                    help='remove outliers')
 parser.add_argument('--plot', action='store', default=[], nargs='+',
                     help='select plots of manh, qq, miami')
 
@@ -460,6 +494,7 @@ print(f"resultdir        : {args.resultdir}")
 print(f"input            : {args.input}")
 print(f"sep              : {sep}")
 print(f"outlier_threshold: {outlier_threshold}")
+print(f"remove_outliers  : {args.remove_outliers}")
 print(f"showplot         : {args.showplot}")
 print(f"saveplot         : {args.saveplot}")
 print(f"plot             : {args.plot}")
@@ -478,8 +513,14 @@ if args.input:
 
         # collect all results
         for index, row in gwas_input.iterrows():
-            method, result_df = read_result_file(result_dir=args.resultdir, result_row=row,
-                                                 outlier_threshold=outlier_threshold)
+
+            method, result_df, number_na_found, number_outliers, number_outliers_removed =\
+                read_result_file(result_dir=args.resultdir, result_row=row,
+                                                 outlier_threshold=outlier_threshold,
+                                                 remove_outliers=args.remove_outliers)
+
+            print(f"{method}: NAs: {number_na_found}, " +
+                  f"outlier: {number_outliers}, outlier removed: {number_outliers_removed}")
 
             single_result = dict()
             single_result["method"] = method
