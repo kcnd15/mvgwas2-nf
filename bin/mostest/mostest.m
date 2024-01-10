@@ -22,16 +22,20 @@ function mostest(pheno_file, bfile_prefix, out_prefix, data_dir, result_dir)
 %  run_mostest.sh: MATLAB:table:RowIndexOutOfRange: Row index exceeds table dimensions.
 %
 % Work dir:
-%  /home/kcan/UOC/tfm/mvgwas2-nf/work/cd/e15cc55c9d8740c3441403edc6b58a
+%  /home/kcan/UOC/tfm/mvgwas2-nf/work/92/b5551f1555c7e222fa5fbb5f3e2f6d
 
-% direct settings for debugging one processing step:
-% pheno_file = "phenotypes.clean.tsv";
-% bfile_prefix = "genotypes_plink1";
-% out_prefix = "mostest_results_genotypes";
-% data_dir = ".";
-% result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI";
+% direct settings for debugging one processing step in a 
+% Nextflow working directory:
+debug_workdir = false;
+if debug_workdir
+    pheno_file = "phenotypes.clean.tsv";
+    bfile_prefix = "genotypes_plink1";
+    out_prefix = "mostest_results_genotypes";
+    data_dir = ".";
+    result_dir = "/home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI";
+end
 
-debug_flag = true;
+debug_flag = false;
 
 if debug_flag
   fprintf("mostest.m: started...\n")
@@ -146,13 +150,48 @@ if isempty(zmat_name)
       
       % kc: remove first column "ID" if present 
       if measures{1} == 'ID'
-        measures_length = length(measures);
-        ymat_df =  ymat_df(:,2:measures_length);
+
         % ymat must have the same number of subjects as the .FAM file
         % ADNI data error: Row index exceeds table dimensions.
-        pheno_entries = height(ymat_df);
-        min_subj_pheno = min(pheno_entries, nsubj);
-        ymat_df = ymat_df(1:min_subj_pheno,:);
+        keep_ids = fam_file{2}; % subject IDs in FAM-file, e.g. 385
+
+        % take only those entries of the pheno-data in ymat_df,
+        % whose IDs (column "ID", e.g. '002_S_0413') are also present in 
+        % the fam-file (fam_file{1,2}) with ID column, e.g. '037_S_0501'
+
+        % keep_ids 385x1 cell
+        % keep_ids = {'002_S_0413', '002_S_1155', '002_S_4229'};
+        % keep_ids_arr = table();
+        % keep_ids_arr.ID = vertcat(keep_ids{:});
+        % ymat_df(1,1) and keep_ids{1}, idx must be n*1 logical
+        % idx = any(keep_ids_arr == ymat_df.ID(1));
+        
+        count_keep_ids = height(keep_ids);
+        count_ymat_df = height(ymat_df);
+        keep_idx = false(count_ymat_df,1);
+        
+        for row_ymat_df = 1:count_ymat_df
+        
+            for row_keep_ids = 1:count_keep_ids
+                ymat_df_ID = ymat_df{row_ymat_df,1}{1};
+                keep_ids_ID = keep_ids{row_keep_ids};
+                if ymat_df_ID == keep_ids_ID
+                    keep_idx(row_ymat_df) = true;
+                    break
+                end
+            end
+        end
+
+        ymat_keep_df = ymat_df(keep_idx,:);
+
+        % then remove the ID-column
+        measures_length = length(measures);
+        ymat_df =  ymat_keep_df(:,2:measures_length);
+
+        % continue with normal processing
+        % pheno_entries = height(ymat_df);
+        % min_subj_pheno = min(pheno_entries, nsubj);
+        % ymat_df = ymat_df(1:min_subj_pheno,:);
       end
 
       % continue with reduced table
