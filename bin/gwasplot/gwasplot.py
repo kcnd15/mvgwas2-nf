@@ -485,6 +485,51 @@ def read_result_file(result_dir, result_row,
     return row_method, result_df, number_of_na_found, all_outliers, outliers_removed, len_g
 
 
+# keep only variants which are common to all results
+def intersect_all_results(all_results_list: list) -> DataFrame:
+
+    all_positions = []
+
+    # create list of chromosome-position tuples of all results / methods
+    for single_result in all_results_list:
+        result_df = single_result["result_df"]
+
+        chrom_pos_set = set()
+
+        for index, row in result_df.iterrows():
+            row_chrom = int(row["CHROM"])
+            row_pos = int(row["POS"])
+            chromosome_position = (row_chrom, row_pos)
+            chrom_pos_set.add(chromosome_position)
+
+        all_positions.append(chrom_pos_set)
+
+    # intersect all chromosome-position sets
+    common_positions_set = None
+    for single_position_set in all_positions:
+        if common_positions_set is None:
+            common_positions_set = single_position_set
+        else:
+            common_positions_set = common_positions_set.intersection(single_position_set)
+
+    # convert set to dataframe
+    common_positions_df = pd.DataFrame(common_positions_set, columns =['CHROM', 'POS'])
+
+
+    # keep only results which have common chrom/pos rows
+    common_results_list = list()
+
+    for single_result in all_results_list:
+        common_single_result = dict()
+        common_single_result["method"] = single_result["method"]
+
+        int_df = pd.merge(single_result["result_df"], common_positions_df, how='inner', on=['CHROM', 'POS'])
+        common_single_result["result_df"] = int_df
+        common_results_list.append(common_single_result)
+
+    return common_results_list
+
+
 # ------------------------------------------------------------------------------
 # main
 # ------------------------------------------------------------------------------
@@ -513,6 +558,8 @@ parser.add_argument('--remove_outliers', action='store_true', default=False,
                     help='remove outliers')
 parser.add_argument('--plot', action='store', default=[], nargs='+',
                     help='select plots of manh, qq, miami')
+parser.add_argument('--only_common', action='store_true', default=False,
+                    help='keep only common variants of all methods')
 
 args = parser.parse_args()
 
@@ -531,6 +578,7 @@ print(f"input            : {args.input}")
 print(f"sep              : {sep}")
 print(f"outlier_threshold: {outlier_threshold}")
 print(f"remove_outliers  : {args.remove_outliers}")
+print(f"only_common      : {args.only_common}")
 print(f"showplot         : {args.showplot}")
 print(f"saveplot         : {args.saveplot}")
 print(f"plot             : {args.plot}")
@@ -568,6 +616,9 @@ if args.input:
             single_result["result_df"] = result_df
             all_results.append(single_result)
 
+        if args.only_common:
+            all_results = intersect_all_results(all_results)
+
         print()
 
     except Exception as e:
@@ -575,7 +626,11 @@ if args.input:
 
 # settings for saving the plots
 if args.saveplot:
-    save_plot_path = str(os.path.join(args.resultdir, args.saveplot))
+    if args.only_common:
+        saveplot_prefix = args.saveplot + "_common"
+    else:
+        saveplot_prefix = args.saveplot
+    save_plot_path = str(os.path.join(args.resultdir, saveplot_prefix))
 else:
     save_plot_path = None
 
