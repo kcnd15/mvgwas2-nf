@@ -568,6 +568,7 @@ def intersect_all_results(all_results_list: list, top_n: int = 10) -> tuple:
 
     # all_snps_df["P_MIN"] = np.min(all_snps_df[['flow_h','flow_c']],axis=1)
     all_snps_df["P_MIN"] = all_snps_df[p_columns].min(axis=1)  # per row
+    all_snps_df['P_MIN_MINUS_LOG10'] = -np.log10(all_snps_df["P_MIN"])
     top_snps_df = all_snps_df.nsmallest(top_n, "P_MIN")
 
     return common_results_list, top_snps_df
