@@ -28,6 +28,7 @@ def preprocess_result(single_gwas_data: dict):
     gwas_method = single_gwas_data["method"]
 
     # rename columns
+    df = df[["CHROM", "POS", "P"]]  # consider only these columns
     df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
     # -log_10(pvalue)
@@ -289,6 +290,7 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
         legend_labels.append(gwas_method)
 
         # preprocess input data
+        df = df[["CHROM", "POS", "P"]]  # consider only these columns
         df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
         df_sorted = df.sort_values("pvalue")
@@ -351,6 +353,7 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
 def process_result_file(glob_files, sep: str, result_dir: str,
                         outlier_threshold: float, remove_outliers: bool,
                         col_chrom: int, col_pos: int, col_p: int,
+                        col_snp: int, col_ref: int, col_alt: int,
                         verbose: bool = False) -> tuple:
 
     df = DataFrame()
@@ -376,7 +379,8 @@ def process_result_file(glob_files, sep: str, result_dir: str,
         if verbose:
             print(f"rows: {len(result_data)}")
 
-        relevant_columns = result_data.columns[[col_chrom, col_pos, col_p]]
+        # gemma: rs:2, allele1:5, allele0:6, af:7; manta: ID:3, REF:4, ALT:5, F:6; MOSTest: SNP:2, A1:4, A2:5
+        relevant_columns = result_data.columns[[col_chrom, col_pos, col_p, col_snp, col_ref, col_alt]]
 
         if show_once:
             if verbose:
@@ -386,7 +390,7 @@ def process_result_file(glob_files, sep: str, result_dir: str,
         result_data_relevant = result_data[relevant_columns].copy()
 
         # rename columns to standard names
-        result_data_relevant = result_data_relevant.set_axis(["CHROM", "POS", "P"], axis=1)
+        result_data_relevant = result_data_relevant.set_axis(["CHROM", "POS", "P", "SNP", "REF", "ALT"], axis=1)
 
         # check for NANs
         count_na = result_data_relevant["P"].isna().sum()
@@ -438,10 +442,10 @@ def process_result_file(glob_files, sep: str, result_dir: str,
     if all_outliers_df_len > 0:
         now = datetime.now()
         now_formatted =  now.strftime("%Y%m%d_%H%M%S")
-        outlier_file = f"outlier_{now_formatted}.xlsx"
+        outlier_file = f"outlier_{now_formatted}.csv"
 
         outlier_path = os.path.join(result_dir, outlier_file)
-        all_outliers_df.to_excel(outlier_path)
+        all_outliers_df.to_csv(outlier_path, index=False)
 
         # print(f"{all_outliers_df_len} outliers found with p-values < {outlier_threshold} and saved to {outlier_path}")
         # print(f"{outliers_removed} outliers removed")
@@ -462,9 +466,18 @@ def read_result_file(result_dir, result_row,
     row_col_p = result_row[['col_p']].item()
     row_resultfile = result_row[['resultfile']].item()
 
+    # additional columns for variant/SNP, Reference allele and Alternative allele
+    row_col_snp = result_row[['col_snp']].item()
+    row_col_ref = result_row[['col_ref']].item()
+    row_col_alt = result_row[['col_alt']].item()
+
     column_chrom = row_col_chrom - 1
     column_pos = row_col_pos - 1
     column_p = row_col_p - 1
+
+    column_snp = row_col_snp - 1
+    column_ref = row_col_ref - 1
+    column_alt = row_col_alt - 1
 
     # read result file
     try:
@@ -475,8 +488,10 @@ def read_result_file(result_dir, result_row,
 
         result_df, number_of_na_found, all_outliers, outliers_removed =\
             process_result_file(glob_files=g, sep=args.sep, result_dir=result_dir,
-                                        outlier_threshold=outlier_threshold, remove_outliers=remove_outliers,
-                                        col_chrom=column_chrom, col_pos=column_pos, col_p=column_p)
+                                outlier_threshold=outlier_threshold, remove_outliers=remove_outliers,
+                                col_chrom=column_chrom, col_pos=column_pos, col_p=column_p,
+                                col_snp=column_snp, col_ref=column_ref, col_alt=column_alt
+                                )
 
     except Exception as e:
         print(e)
@@ -486,7 +501,7 @@ def read_result_file(result_dir, result_row,
 
 
 # keep only variants which are common to all results
-def intersect_all_results(all_results_list: list) -> DataFrame:
+def intersect_all_results(all_results_list: list, top_n: int = 10) -> tuple:
 
     all_positions = []
 
@@ -518,16 +533,44 @@ def intersect_all_results(all_results_list: list) -> DataFrame:
 
     # keep only results which have common chrom/pos rows
     common_results_list = list()
+    all_snps_df = None
+    p_columns = list()
 
     for single_result in all_results_list:
         common_single_result = dict()
+        gwas_method = single_result["method"]
         common_single_result["method"] = single_result["method"]
 
         int_df = pd.merge(single_result["result_df"], common_positions_df, how='inner', on=['CHROM', 'POS'])
         common_single_result["result_df"] = int_df
         common_results_list.append(common_single_result)
 
-    return common_results_list
+        # primary key is CHROM, POS; rename the remaining columns which are specific to the GWAS method
+        # create a dictionary: key = old name, value = new name
+        rename_columns = {
+            'P': 'P_' + gwas_method,
+            'SNP': 'SNP_' + gwas_method,
+            'REF': 'REF_' + gwas_method,
+            'ALT': 'ALT_' + gwas_method
+        }
+        int_method_df = int_df.rename(columns=rename_columns)
+
+        # store the column names of all p-value columns for later minimum processing
+        p_columns.append('P_' + gwas_method)
+
+        if all_snps_df is None:
+            all_snps_df = int_method_df.copy()
+        else:
+            # merge
+            all_snps_df = pd.merge(all_snps_df, int_method_df, how='inner', on=['CHROM', 'POS'])
+
+    # top_snps = common_results_list.nlargest(5, "c")
+
+    # all_snps_df["P_MIN"] = np.min(all_snps_df[['flow_h','flow_c']],axis=1)
+    all_snps_df["P_MIN"] = all_snps_df[p_columns].min(axis=1)  # per row
+    top_snps_df = all_snps_df.nsmallest(top_n, "P_MIN")
+
+    return common_results_list, top_snps_df
 
 
 # ------------------------------------------------------------------------------
@@ -560,6 +603,8 @@ parser.add_argument('--plot', action='store', default=[], nargs='+',
                     help='select plots of manh, qq, miami')
 parser.add_argument('--only_common', action='store_true', default=False,
                     help='keep only common variants of all methods')
+parser.add_argument('--ntop', action='store', type=int, default=10,
+                    help='select top n SNPs; used with --only_common')
 
 args = parser.parse_args()
 
@@ -579,6 +624,7 @@ print(f"sep              : {sep}")
 print(f"outlier_threshold: {outlier_threshold}")
 print(f"remove_outliers  : {args.remove_outliers}")
 print(f"only_common      : {args.only_common}")
+print(f"ntop             : {args.ntop}")
 print(f"showplot         : {args.showplot}")
 print(f"saveplot         : {args.saveplot}")
 print(f"plot             : {args.plot}")
@@ -617,7 +663,15 @@ if args.input:
             all_results.append(single_result)
 
         if args.only_common:
-            all_results = intersect_all_results(all_results)
+            all_results, top_snps = intersect_all_results(all_results, top_n=args.ntop)
+
+            # save top SNPs
+            now = datetime.now()
+            now_formatted = now.strftime("%Y%m%d_%H%M%S")
+            top_snp_file = f"top_snps_{now_formatted}.csv"
+
+            top_snp_path = os.path.join(args.resultdir, top_snp_file)
+            top_snps.to_csv(top_snp_path, index=False)
 
         print()
 

@@ -1,2 +1,2 @@
 method,resultfile,col_chrom,col_pos,col_p
-MOSTest,mostest_results_genotypes.*.most_perm.sumstats,1,3,6
+MOSTest,mostest_results_genotypes.*.most_perm.sumstats,1,3,6,2,4,5

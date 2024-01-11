@@ -1,2 +1,2 @@
 method,resultfile,col_chrom,col_pos,col_p
-MANTA,manta*.txt,1,2,8
+MANTA,manta*.txt,1,2,8,3,5,4
