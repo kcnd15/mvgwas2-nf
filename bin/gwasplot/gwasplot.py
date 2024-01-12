@@ -619,6 +619,9 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
     phenotypes_df['Subiculum'] = phenotypes_df['ST137HS'] + phenotypes_df['ST145HS']
     phenotypes_df['Tail'] = phenotypes_df['ST138HS'] + phenotypes_df['ST146HS']
 
+    hippocampus_subfields = ['CA1', 'CA2_3', 'CA4_DG', 'Fimbria', 'HippocampalFissure',
+                             'Presubiculum', 'Subiculum', 'Tail']
+
     # read relevant genotypes entries from gz-file
     chrom_found = False
     line_count = 0
@@ -709,11 +712,48 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
                         break
                 pass
 
+    # combine locus / genotype with phenotype values (volumes of hippocampus subfields)
+    # for all SNPs
+    snp_genotype_volumes = dict()
+    for snp in snp_genotype_samples:  # rs1018834
+        snp_genotype_volumes[snp] = dict()
 
-    # read relevant phenotypes entries
+        # for all genotypes
+        for genotype in snp_genotype_samples[snp]:  # genotype_0_0
+            snp_genotype_volumes[snp][genotype] = dict()
+
+            # get values for all hippocampus subfields
+            for subfield in hippocampus_subfields:
+                snp_genotype_volumes[snp][genotype][subfield] = dict()
+
+                # get values
+                sample_count = 0
+                sample_sum = 0.0
+
+                for sample in snp_genotype_samples[snp][genotype]['sample_id']:  # 136_S_0873
+                    try:
+                        subfield_samples = phenotypes_df[subfield]
+                        subfield_vol_numpy = subfield_samples[sample]
+                        sample_count += 1
+
+                        try:
+                            subfield_vol = subfield_vol_numpy.item()
+                        except ValueError as e:
+                            # entry has duplicates, take the first value
+                            subfield_vol = subfield_vol_numpy[0].item()
+
+                        sample_sum += subfield_vol
+                    except KeyError:
+                        pass
+
+                snp_genotype_volumes[snp][genotype][subfield]["sample_count"] = sample_count
+                snp_genotype_volumes[snp][genotype][subfield]["sample_sum"] = sample_sum
+                if sample_count > 0:
+                    snp_genotype_volumes[snp][genotype][subfield]["sample_avg"] = sample_sum / sample_count
+                else:
+                    snp_genotype_volumes[snp][genotype][subfield]["sample_avg"] = 0.0
 
     # create box plots
-
     pass
 
 
