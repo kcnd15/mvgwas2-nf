@@ -582,17 +582,48 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
     for index, row in top_snps_df.iterrows():
         snp_tuple = (row["CHROM"], row["POS"])
         top_snps_set.add(snp_tuple)
+    number_of_top_snps = len(top_snps_df)
 
     # read phenotypes
     phenotypes_df = pd.read_csv(phenotypes, sep="\t")
     phenotypes_df.set_index("ID", inplace=True)
 
-    # sum all volumes per row
+    # sum all volumes per region
+    # pheno_legend.txt:
+    # 1       ID      Individual_ID
+    # 2       ST131HS LeftCA1
+    # 3       ST132HS LeftCA2_3
+    # 4       ST133HS LeftCA4_DG
+    # 5       ST134HS LeftFimbria
+    # 6       ST135HS LeftHippocampalFissure
+    # 7       ST136HS LeftPresubiculum
+    # 8       ST137HS LeftSubiculum
+    # 9       ST138HS LeftTail
+    # 10      ST139HS RightCA1
+    # 11      ST140HS RightCA2_3
+    # 12      ST141HS RightCA4_DG
+    # 13      ST142HS RightFimbria
+    # 14      ST143HS RightHippocampalFissure
+    # 15      ST144HS RightPresubiculum
+    # 16      ST145HS RightSubiculum
+    # 17      ST146HS RightTail
     phenotypes_df['volumes'] = phenotypes_df.sum(axis=1, numeric_only=True)
+
+    # sum the 8 regions of the hippocampus (left / right)
+    phenotypes_df['CA1'] = phenotypes_df['ST131HS'] + phenotypes_df['ST139HS']
+    phenotypes_df['CA2_3'] = phenotypes_df['ST132HS'] + phenotypes_df['ST140HS']
+    phenotypes_df['CA4_DG'] = phenotypes_df['ST133HS'] + phenotypes_df['ST141HS']
+    phenotypes_df['Fimbria'] = phenotypes_df['ST134HS'] + phenotypes_df['ST142HS']
+    phenotypes_df['HippocampalFissure'] = phenotypes_df['ST135HS'] + phenotypes_df['ST143HS']
+    phenotypes_df['Presubiculum'] = phenotypes_df['ST136HS'] + phenotypes_df['ST144HS']
+    phenotypes_df['Subiculum'] = phenotypes_df['ST137HS'] + phenotypes_df['ST145HS']
+    phenotypes_df['Tail'] = phenotypes_df['ST138HS'] + phenotypes_df['ST146HS']
 
     # read relevant genotypes entries from gz-file
     chrom_found = False
     line_count = 0
+    sample_columns_start = None
+    snps_found = 0
 
     with gzip.open(genotypes,'r') as f:
         for line in f:
@@ -610,16 +641,32 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
 
                     # get sample IDs (start after the FORMAT columns)
                     index_format = chrom_line_split.index("FORMAT")
-                    sample_ids = chrom_line_split[index_format+1:]
+                    sample_columns_start = index_format+1
+                    sample_ids = chrom_line_split[sample_columns_start:]
 
                     continue
 
             # compare loci after #CHROM line has been found
             if chrom_found:
                 locus_line = str_line.split("\t")
-                line_chrom =  locus_line[0]
-                line_pos = locus_line[1]
+                line_chrom = int(locus_line[0])
+                line_pos = int(locus_line[1])
+                line_locus = (line_chrom, line_pos)
+
                 # compare CHROM and POS values with those found in the top-SNPs
+                if line_locus in top_snps_set:
+                    snps_found +=  1
+                    print(f"top SNP {snps_found} found: locus {line_locus} in line {line_count}")
+                    locus_samples_list = locus_line[sample_columns_start:]
+
+                    # group locus samples by genotype 0/0, 0/1, 1/1
+                    for locus_sample in locus_samples_list:
+                        sample_split = locus_sample.split(":")
+                        geno_type = sample_split[0]  # 0/0, 0/1, 1/1, or unknown ./.
+
+                    if snps_found == number_of_top_snps:
+                        # no need to look for further SNPs since all top-SNPs already found
+                        break
                 pass
 
 
