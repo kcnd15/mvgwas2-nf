@@ -625,6 +625,14 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
     sample_columns_start = None
     snps_found = 0
 
+    count_0_0 = 0
+    count_0_1 = 0
+    count_1_1 = 0
+    count_oth = 0
+
+    snp_genotype_samples = dict()
+
+
     with gzip.open(genotypes,'r') as f:
         for line in f:
             line_count += 1
@@ -659,10 +667,42 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
                     print(f"top SNP {snps_found} found: locus {line_locus} in line {line_count}")
                     locus_samples_list = locus_line[sample_columns_start:]
 
+                    locus_snp = locus_line[2]
+                    if locus_snp == ".":  # SNP not in dbSNP-catalog
+                        snp_reference = f"chr{line_chrom}_{line_pos}"
+                    else:
+                        snp_reference = locus_snp  # e.g. rs12345
+
                     # group locus samples by genotype 0/0, 0/1, 1/1
+                    snp_genotype_samples[snp_reference] = {
+                        "genotype_0_0": {"sample_id": list()},
+                        "genotype_0_1": {"sample_id": list()},
+                        "genotype_1_1": {"sample_id": list()},
+                        "genotype_oth": {"sample_id": list()},
+                    }
+
+                    locus_sample_number = 0
                     for locus_sample in locus_samples_list:
                         sample_split = locus_sample.split(":")
                         geno_type = sample_split[0]  # 0/0, 0/1, 1/1, or unknown ./.
+                        if geno_type == "0/0":
+                            count_0_0 += 1
+                            snp_genotype_samples[snp_reference]["genotype_0_0"]["sample_id"]\
+                                .append(sample_ids[locus_sample_number])
+                        elif geno_type == "0/1":
+                            count_0_1 += 1
+                            snp_genotype_samples[snp_reference]["genotype_0_1"]["sample_id"]\
+                                .append(sample_ids[locus_sample_number])
+                        elif  geno_type == "1/1":
+                            count_1_1 += 1
+                            snp_genotype_samples[snp_reference]["genotype_1_1"]["sample_id"]\
+                                .append(sample_ids[locus_sample_number])
+                        else:
+                            snp_genotype_samples[snp_reference]["genotype_oth"]["sample_id"]\
+                                .append(sample_ids[locus_sample_number])
+                            count_oth += 1
+
+                        locus_sample_number += 1
 
                     if snps_found == number_of_top_snps:
                         # no need to look for further SNPs since all top-SNPs already found
