@@ -12,6 +12,7 @@ from pandas import DataFrame
 import os
 from datetime import datetime
 import glob
+import gzip
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -574,6 +575,61 @@ def intersect_all_results(all_results_list: list, top_n: int = 10) -> tuple:
     return common_results_list, top_snps_df
 
 
+def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
+
+    # create list of (CHROM,POS) of the top-SNPs
+    top_snps_set = set()
+    for index, row in top_snps_df.iterrows():
+        snp_tuple = (row["CHROM"], row["POS"])
+        top_snps_set.add(snp_tuple)
+
+    # read phenotypes
+    phenotypes_df = pd.read_csv(phenotypes, sep="\t")
+    phenotypes_df.set_index("ID", inplace=True)
+
+    # sum all volumes per row
+    phenotypes_df['volumes'] = phenotypes_df.sum(axis=1, numeric_only=True)
+
+    # read relevant genotypes entries from gz-file
+    chrom_found = False
+    line_count = 0
+
+    with gzip.open(genotypes,'r') as f:
+        for line in f:
+            line_count += 1
+            str_line = line.decode()
+
+            # process #CHROM-line
+            if not chrom_found:
+                if str_line.startswith("#CHROM"):
+                    chrom_found = True
+                    chrom_line = str_line
+                    chrom_line_number = line_count
+                    print(f"#CHROM found in line {chrom_line_number}")
+                    chrom_line_split = chrom_line.split("\t")
+
+                    # get sample IDs (start after the FORMAT columns)
+                    index_format = chrom_line_split.index("FORMAT")
+                    sample_ids = chrom_line_split[index_format+1:]
+
+                    continue
+
+            # compare loci after #CHROM line has been found
+            if chrom_found:
+                locus_line = str_line.split("\t")
+                line_chrom =  locus_line[0]
+                line_pos = locus_line[1]
+                # compare CHROM and POS values with those found in the top-SNPs
+                pass
+
+
+    # read relevant phenotypes entries
+
+    # create box plots
+
+    pass
+
+
 # ------------------------------------------------------------------------------
 # main
 # ------------------------------------------------------------------------------
@@ -606,6 +662,10 @@ parser.add_argument('--only_common', action='store_true', default=False,
                     help='keep only common variants of all methods')
 parser.add_argument('--ntop', action='store', type=int, default=10,
                     help='select top n SNPs; used with --only_common')
+parser.add_argument('--genotypes', action='store',
+                    help='genotypes gz-file')
+parser.add_argument('--phenotypes', action='store',
+                    help='phenotypes file')
 
 args = parser.parse_args()
 
@@ -630,6 +690,8 @@ print(f"showplot         : {args.showplot}")
 print(f"saveplot         : {args.saveplot}")
 print(f"plot             : {args.plot}")
 print(f"verbose          : {args.verbose}")
+print(f"genotypes        : {args.genotypes}")
+print(f"phenotypes       : {args.phenotypes}")
 print()
 
 result_df = None
@@ -673,6 +735,8 @@ if args.input:
 
             top_snp_path = os.path.join(args.resultdir, top_snp_file)
             top_snps.to_csv(top_snp_path, index=False)
+
+            process_top_snps(top_snps, args.genotypes, args.phenotypes)
 
         print()
 
