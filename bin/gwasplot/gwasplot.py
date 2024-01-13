@@ -368,12 +368,19 @@ def boxplot(snp_genotype_volumes: dict, figsize: tuple, snp: str, save_path: str
 
     all_subfields_df = None
 
+    genotype_mapping =  {
+        "genotype_0_0": "0/0",
+        "genotype_0_1": "0/1",
+        "genotype_1_1": "1/1",
+        "genotype_oth": "oth"
+    }
+
     for genotype in df:
         for subfield in df[genotype]:
             sample_volumes = snp_genotype_volumes[snp][genotype][subfield]["sample_volumes"]
             df_subfield_volumes = pd.DataFrame({"volume": sample_volumes})
             df_subfield_volumes["subfield"] = subfield
-            df_subfield_volumes["genotype"] = genotype
+            df_subfield_volumes["genotype"] = genotype_mapping[genotype]
 
             if all_subfields_df is None:
                 all_subfields_df = df_subfield_volumes.copy()
@@ -387,7 +394,8 @@ def boxplot(snp_genotype_volumes: dict, figsize: tuple, snp: str, save_path: str
     ax.figure.set_figwidth(figsize[0])
     ax.figure.set_figheight(figsize[1])
 
-    sns.boxplot(x="subfield", y="volume", hue="genotype", data=all_subfields_df)
+    ax_boxplot = sns.boxplot(x="subfield", y="volume", hue="genotype", data=all_subfields_df)
+    ax_boxplot.set_xticklabels(ax.get_xticklabels(), rotation=30)
 
     # save plot
     if save_path:
