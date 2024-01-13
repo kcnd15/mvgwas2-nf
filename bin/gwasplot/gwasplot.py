@@ -351,6 +351,56 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
     plt.show()
 
 
+def top_snp_boxplots(snp_genotype_volumes: dict, figsize: tuple, number_of_top_snps: int = 3, save_path: str = None):
+
+    i = 0
+    for snp in snp_genotype_volumes:
+        boxplot(snp_genotype_volumes=snp_genotype_volumes, snp=snp, figsize=figsize,  save_path=save_path)
+        i += 1
+        if i == number_of_top_snps:
+            break
+
+
+def boxplot(snp_genotype_volumes: dict, figsize: tuple, snp: str, save_path: str = None):
+
+    # SNP, genotype, hippocampus subfield, sample volumes
+    df = snp_genotype_volumes[snp]
+
+    all_subfields_df = None
+
+    for genotype in df:
+        for subfield in df[genotype]:
+            sample_volumes = snp_genotype_volumes[snp][genotype][subfield]["sample_volumes"]
+            df_subfield_volumes = pd.DataFrame({"volume": sample_volumes})
+            df_subfield_volumes["subfield"] = subfield
+            df_subfield_volumes["genotype"] = genotype
+
+            if all_subfields_df is None:
+                all_subfields_df = df_subfield_volumes.copy()
+            else:
+                all_subfields_df = pd.concat([all_subfields_df, df_subfield_volumes])
+            pass
+
+    default_fontsize = 30
+    ax = plt.gca() # get Axes reference created by seaborn
+    ax.set_title("Volumes of hippocampus subfields of " + snp, fontweight="bold", fontsize=default_fontsize)
+    ax.figure.set_figwidth(figsize[0])
+    ax.figure.set_figheight(figsize[1])
+
+    sns.boxplot(x="subfield", y="volume", hue="genotype", data=all_subfields_df)
+
+    # save plot
+    if save_path:
+        png_file = save_path + "_" + snp + "_box.png"
+        ax.figure.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    # show plot
+    plt.show()
+
+    pass
+
+
 def process_result_file(glob_files, sep: str, result_dir: str,
                         outlier_threshold: float, remove_outliers: bool,
                         col_chrom: int, col_pos: int, col_p: int,
@@ -575,7 +625,7 @@ def intersect_all_results(all_results_list: list, top_n: int = 10) -> tuple:
     return common_results_list, top_snps_df
 
 
-def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
+def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str) -> dict:
 
     # create list of (CHROM,POS) of the top-SNPs
     top_snps_set = set()
@@ -729,6 +779,7 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
                 # get values
                 sample_count = 0
                 sample_sum = 0.0
+                sample_volume_list = list()
 
                 for sample in snp_genotype_samples[snp][genotype]['sample_id']:  # 136_S_0873
                     try:
@@ -743,18 +794,20 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str):
                             subfield_vol = subfield_vol_numpy[0].item()
 
                         sample_sum += subfield_vol
+                        sample_volume_list.append(subfield_vol)
                     except KeyError:
                         pass
 
                 snp_genotype_volumes[snp][genotype][subfield]["sample_count"] = sample_count
                 snp_genotype_volumes[snp][genotype][subfield]["sample_sum"] = sample_sum
+                snp_genotype_volumes[snp][genotype][subfield]["sample_volumes"] = sample_volume_list
                 if sample_count > 0:
                     snp_genotype_volumes[snp][genotype][subfield]["sample_avg"] = sample_sum / sample_count
                 else:
                     snp_genotype_volumes[snp][genotype][subfield]["sample_avg"] = 0.0
 
     # create box plots
-    pass
+    return snp_genotype_volumes
 
 
 # ------------------------------------------------------------------------------
@@ -821,8 +874,13 @@ print(f"genotypes        : {args.genotypes}")
 print(f"phenotypes       : {args.phenotypes}")
 print()
 
+# TODO: siginificance level for smaller sample, use in miami / manhattan plots
+# TODO: boxplot of measurements
+# TODO: Venn diagram of SNPs
+
 result_df = None
 all_results = list()
+snp_genotype_volumes = None
 
 significance_level = 5e-8
 significance_level_log = - math.log10(significance_level)
@@ -863,7 +921,7 @@ if args.input:
             top_snp_path = os.path.join(args.resultdir, top_snp_file)
             top_snps.to_csv(top_snp_path, index=False)
 
-            process_top_snps(top_snps, args.genotypes, args.phenotypes)
+            snp_genotype_volumes = process_top_snps(top_snps, args.genotypes, args.phenotypes)
 
         print()
 
@@ -909,3 +967,7 @@ if args.input:
     if "qq" in args.plot:
         # qqplot for multiple result data
         qqplot(all_results, method_colors=gwas_method_colors, figsize=figure_size, save_path=save_plot_path)
+
+    if "box" in args.plot and args.only_common:
+        # qqplot for multiple result data
+        top_snp_boxplots(snp_genotype_volumes, figsize=figure_size, save_path=save_plot_path, number_of_top_snps=3)
