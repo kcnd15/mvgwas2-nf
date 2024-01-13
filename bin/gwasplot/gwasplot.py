@@ -52,7 +52,8 @@ def preprocess_result(single_gwas_data: dict):
 
 
 def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
-                   show_plot: bool = True, save_path: str = None, significance_level_log: float = None):
+                   show_plot: bool = True, save_path: str = None, significance_level_log: float = None,
+                   adjusted_threshold_log: float = None):
 
     # ----------------------------------
     # preprocessing of the result data
@@ -61,6 +62,7 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
     gwas_method = single_gwas_data["method"]
 
     # rename columns
+    df = df[["CHROM", "POS", "P"]]  # consider only these columns
     df = df.set_axis(["chromosome", "position", "pvalue"], axis=1)
 
     # -log_10(pvalue)
@@ -91,7 +93,8 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
     # create plot
     plot_single_manhattan(gwas_method=gwas_method, df=df, df_grouped=df_grouped,
                           colors=method_colors[gwas_method], ax=ax, y_orientation_up=True,
-                          significance_level_log=significance_level_log)
+                          significance_level_log=significance_level_log,
+                          adjusted_threshold_log=adjusted_threshold_log)
     # set title
     title_string = f"GWAS plot for {gwas_method}"
 
@@ -110,7 +113,8 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
 
 def miami_plot_all(gwas_data: list, method_colors: dict, figsize: tuple,
                    show_plot: bool = False, save_path: str = None,
-                   significance_level_log: float = None):
+                   significance_level_log: float = None,
+                   adjusted_threshold_log: float = None):
 
     number_of_methods = len(gwas_data)
 
@@ -147,14 +151,16 @@ def miami_plot_all(gwas_data: list, method_colors: dict, figsize: tuple,
 
         miami_plot(gwas_data1=method1, gwas_data2=method2, figsize=figsize,
                    show_plot=show_plot, save_path=save_path,
-                   significance_level_log=significance_level_log)
+                   significance_level_log=significance_level_log,
+                   adjusted_threshold_log=adjusted_threshold_log)
 
     pass
 
 
 def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation_up: bool = True,
                           position_min: int = 0, position_max: int = 0,
-                          significance_level_log: float = None):
+                          significance_level_log: float = None,
+                          adjusted_threshold_log: float = None):
 
     # list of labels and their positions
     x_labels = []
@@ -213,8 +219,9 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
         max_y = max(max_y_data, significance_level_log)
         max_y = math.ceil(max_y)
 
-        # plot line of significance level
+        # plot line of significance level and adjusted significance level
         ax.axhline(y=significance_level_log, color="red")
+        ax.axhline(y=adjusted_threshold_log, color="black")
 
     if y_orientation_up:
         ax.set_ylim([0, max_y])
@@ -227,7 +234,8 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
     ax.set_ylabel("-log10(pvalue)")
 
 def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
-               show_plot: bool = False, save_path: str = None, significance_level_log: float = None):
+               show_plot: bool = False, save_path: str = None,
+               significance_level_log: float = None, adjusted_threshold_log: float = None):
 
     method1 = gwas_data1['method']
     method2 = gwas_data2['method']
@@ -253,13 +261,15 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
     plot_single_manhattan(gwas_method=method1, df=df1, df_grouped=df1_grouped,
                           colors=gwas_data1["colors"], ax=axs[0], y_orientation_up=True,
                           position_min=position_min, position_max=position_max,
-                          significance_level_log=significance_level_log)
+                          significance_level_log=significance_level_log,
+                          adjusted_threshold_log=adjusted_threshold_log)
 
     # create second manhattan plot, downwards
     plot_single_manhattan(gwas_method=method2, df=df2, df_grouped=df2_grouped,
                           colors=gwas_data2["colors"], ax=axs[1], y_orientation_up=False,
                           position_min=position_min, position_max=position_max,
-                          significance_level_log=significance_level_log)
+                          significance_level_log=significance_level_log,
+                          adjusted_threshold_log=adjusted_threshold_log)
 
     # super title
     fig.suptitle("Miami plot", fontweight="bold")
@@ -850,6 +860,8 @@ parser.add_argument('--only_common', action='store_true', default=False,
                     help='keep only common variants of all methods')
 parser.add_argument('--ntop', action='store', type=int, default=10,
                     help='select top n SNPs; used with --only_common')
+parser.add_argument('--threshold', action='store', type=float, default=1e-3,
+                    help='adjusted GWAS-threshold')
 parser.add_argument('--genotypes', action='store',
                     help='genotypes gz-file')
 parser.add_argument('--phenotypes', action='store',
@@ -857,7 +869,7 @@ parser.add_argument('--phenotypes', action='store',
 
 args = parser.parse_args()
 
-print("GWAS plots v1.0")
+print("GWAS plots v1.1")
 
 print("\nparameters used:\n")
 
@@ -880,10 +892,10 @@ print(f"plot             : {args.plot}")
 print(f"verbose          : {args.verbose}")
 print(f"genotypes        : {args.genotypes}")
 print(f"phenotypes       : {args.phenotypes}")
+print(f"threshold        : {args.threshold}")
 print()
 
 # TODO: siginificance level for smaller sample, use in miami / manhattan plots
-# TODO: boxplot of measurements
 # TODO: Venn diagram of SNPs
 
 result_df = None
@@ -893,7 +905,11 @@ snp_genotype_volumes = None
 significance_level = 5e-8
 significance_level_log = - math.log10(significance_level)
 
-print(f"GWAS significance level: {significance_level}, -log10: {significance_level_log}\n")
+adjusted_threshold = args.threshold
+adjusted_threshold_log = - math.log10(adjusted_threshold)
+
+print(f"GWAS significance level  : {significance_level}, -log10: {significance_level_log}")
+print(f"GWAS adjusted sign. level: {adjusted_threshold}, -log10: {adjusted_threshold_log}\n")
 
 # read GWAS result data
 if args.input:
@@ -965,12 +981,14 @@ if args.input:
         for single_result in all_results:
             manhattan_plot(single_result, method_colors=gwas_method_colors, figsize=figure_size,
                            show_plot=args.showplot, save_path=save_plot_path,
-                           significance_level_log=significance_level_log)
+                           significance_level_log=significance_level_log,
+                           adjusted_threshold_log=adjusted_threshold_log)
 
     if "miami" in args.plot:
         miami_plot_all(all_results, method_colors=gwas_method_colors, figsize=figure_size,
                        show_plot=args.showplot, save_path=save_plot_path,
-                       significance_level_log=significance_level_log)
+                       significance_level_log=significance_level_log,
+                       adjusted_threshold_log=adjusted_threshold_log)
 
     if "qq" in args.plot:
         # qqplot for multiple result data
