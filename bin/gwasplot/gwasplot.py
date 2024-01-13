@@ -4,6 +4,11 @@
 # Miami plot for all GWAS methods
 # --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI
 # --input /home/kcan/UOC/tfm/mvgwas2-nf/bin/gwasplot/gwasplot_input.csv --plot miami --saveplot adni --showplot
+#
+# --resultdir /home/kcan/UOC/tfm/mvgwas2-nf/result/ADNI --input /home/kcan/UOC/tfm/mvgwas2-nf/bin/gwasplot/gwasplot_input.csv
+# --plot manh miami qq box --saveplot adni --showplot --remove_outliers
+# --only_common --ntop 10 --genotypes /home/kcan/UOC/tfm/mvgwas2-nf/data/ADNI/genotypes.chr22.vcf.gz
+# --phenotypes /home/kcan/UOC/tfm/mvgwas2-nf/data/ADNI/phenotypes.tsv
 
 import argparse
 import pandas as pd
@@ -18,6 +23,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import seaborn as sns
+
+import matplotlib_venn
 
 
 def preprocess_result(single_gwas_data: dict):
@@ -46,7 +53,7 @@ def preprocess_result(single_gwas_data: dict):
 
     # create an index for the x-axis and group by chromosome
     df['ind'] = range(len(df))
-    df_grouped = df.groupby('chromosome')
+    df_grouped = df.groupby('chromosome', observed=False)
 
     return df, df_grouped
 
@@ -79,7 +86,7 @@ def manhattan_plot(single_gwas_data: dict, method_colors: dict, figsize: tuple,
 
     # create an index for the x-axis and group by chromosome
     df['ind'] = range(len(df))
-    df_grouped = df.groupby('chromosome')
+    df_grouped = df.groupby('chromosome', observed=False)
 
     # ----------------------------
     # display the manhattan plot
@@ -287,6 +294,92 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
     pass
 
 
+def plot_venn_diagram(a: set, b: set, c: set, labels: list, title: str, save_path: str = None,):
+
+    # a = set(a)
+    # b = set(b)
+    # c = set(c)
+
+    only_a = len(a - b - c)
+    only_b = len(b - a - c)
+    only_c = len(c - a - b)
+
+    only_a_b = len(a & b - c)
+    only_a_c = len(a & c - b)
+    only_b_c = len(b & c - a)
+
+    a_b_c = len(a & b & c)
+
+    matplotlib_venn.venn3(subsets=(only_a, only_b, only_a_b, only_c, only_a_c, only_b_c, a_b_c),
+                          set_labels=labels)
+
+    # set title
+    plt.title(title, fontweight="bold")
+
+    # save the graph
+    if save_path:
+        png_file = save_path + "_venn.png"
+        plt.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    # show plot
+    plt.show()
+
+def venn_diagram(gwas_data: list, significance_threshold: float, method_colors: dict, figsize: tuple, save_path: str = None):
+
+    significant_results = dict()
+
+    for method_result in gwas_data:
+        df = method_result["result_df"].copy()
+        df['minuslog10pvalue'] = -np.log10(df["P"])
+        if significance_threshold is not None:
+            df_filtered = df[df['minuslog10pvalue'] >= significance_threshold]
+        else:
+            df_filtered = df
+        df_filtered = df_filtered[["CHROM", "POS", "minuslog10pvalue"]]  # consider only these columns
+
+        significant_results[method_result["method"]] = df_filtered.copy()
+
+    # intersect the results
+    all_chrom_pos_set = set()
+    method_locus = dict()
+    for method in significant_results: # eg GEMMA
+        df = significant_results[method]
+        method_locus[method] = set()
+        for index, row in df.iterrows():
+            row_chrom = int(row["CHROM"].item())
+            row_pos = int(row["POS"].item())
+            locus = (row_chrom, row_pos)
+            all_chrom_pos_set.add(locus)
+            method_locus[method].add(locus)
+
+    all_chrom_pos_df = pd.DataFrame(all_chrom_pos_set)
+    all_chrom_pos_df = all_chrom_pos_df.set_axis(["CHROM", "POS"], axis=1)
+    all_chrom_pos_sorted_df = all_chrom_pos_df.sort_values(["CHROM", "POS"])
+
+    # join all method results
+    all_chrom_pos_join_df = all_chrom_pos_sorted_df.copy()
+
+    for method_result in gwas_data:
+        df = method_result["result_df"]
+        df = df[["CHROM", "POS", "P"]].copy()  # consider only these columns
+        df["method"] = method_result["method"]
+        method_p = "P_" + method_result["method"]
+        df = df.set_axis(["CHROM", "POS", method_p, "method"], axis=1)
+        # all_chrom_pos_join_df = all_chrom_pos_join_df.join(df, on=["CHROM","POS"], how="left")
+        all_chrom_pos_join_df = pd.merge(all_chrom_pos_join_df, df, on=["CHROM","POS"], how="left")
+        pass
+
+    if significance_threshold is None:
+        title_string = "Venn diagram for GWAS methods"
+    else:
+        title_string = f"Venn diagram for threshold {significance_threshold}"
+
+    plot_venn_diagram(method_locus["GEMMA"], method_locus["MANTA"], method_locus["MOSTest"],
+                      labels=["GEMMA", "MANTA", "MOSTest"], title=title_string, save_path=save_path)
+    pass
+
+
 def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str = None):
 
     legend_labels = list()
@@ -325,7 +418,7 @@ def qqplot(gwas_data: list, method_colors: dict, figsize: tuple, save_path: str 
     legend = plt.legend(labels=legend_labels, fontsize=default_fontsize)
 
     # show larger legend markers
-    for handle in legend.legendHandles:
+    for handle in legend.legend_handles:
         handle.set_sizes([500.0])
 
     # get current figure / Axis
@@ -405,6 +498,9 @@ def boxplot(snp_genotype_volumes: dict, figsize: tuple, snp: str, save_path: str
     ax.figure.set_figheight(figsize[1])
 
     ax_boxplot = sns.boxplot(x="subfield", y="volume", hue="genotype", data=all_subfields_df)
+
+    # rotate the x-axis labels
+    ax_boxplot.set_xticks(ax_boxplot.get_xticks())
     ax_boxplot.set_xticklabels(ax.get_xticklabels(), rotation=30)
 
     # save plot
@@ -809,7 +905,7 @@ def process_top_snps(top_snps_df: DataFrame, genotypes: str, phenotypes: str) ->
                             subfield_vol = subfield_vol_numpy.item()
                         except ValueError as e:
                             # entry has duplicates, take the first value
-                            subfield_vol = subfield_vol_numpy[0].item()
+                            subfield_vol = subfield_vol_numpy.iloc[0].item()
 
                         sample_sum += subfield_vol
                         sample_volume_list.append(subfield_vol)
@@ -855,13 +951,15 @@ parser.add_argument('--outlier_threshold', action='store',
 parser.add_argument('--remove_outliers', action='store_true', default=False,
                     help='remove outliers')
 parser.add_argument('--plot', action='store', default=[], nargs='+',
-                    help='select plots of manh, qq, miami')
+                    help='select plots of qq manh miami box venn')
 parser.add_argument('--only_common', action='store_true', default=False,
                     help='keep only common variants of all methods')
 parser.add_argument('--ntop', action='store', type=int, default=10,
                     help='select top n SNPs; used with --only_common')
-parser.add_argument('--threshold', action='store', type=float, default=1e-3,
+parser.add_argument('--threshold', action='store', type=float,
                     help='adjusted GWAS-threshold')
+parser.add_argument('--vennthreshold', action='store', type=float,
+                    help='adjusted GWAS-threshold for Venn diagram')
 parser.add_argument('--genotypes', action='store',
                     help='genotypes gz-file')
 parser.add_argument('--phenotypes', action='store',
@@ -893,10 +991,9 @@ print(f"verbose          : {args.verbose}")
 print(f"genotypes        : {args.genotypes}")
 print(f"phenotypes       : {args.phenotypes}")
 print(f"threshold        : {args.threshold}")
+print(f"vennthreshold    : {args.vennthreshold}")
 print()
 
-# TODO: siginificance level for smaller sample, use in miami / manhattan plots
-# TODO: Venn diagram of SNPs
 
 result_df = None
 all_results = list()
@@ -905,11 +1002,23 @@ snp_genotype_volumes = None
 significance_level = 5e-8
 significance_level_log = - math.log10(significance_level)
 
-adjusted_threshold = args.threshold
-adjusted_threshold_log = - math.log10(adjusted_threshold)
+if args.threshold:
+    adjusted_threshold = args.threshold
+    adjusted_threshold_log = - math.log10(adjusted_threshold)
+else:
+    adjusted_threshold = None
+    adjusted_threshold_log = None
+
+if args.vennthreshold:
+    venn_threshold = args.vennthreshold
+    venn_threshold_log = - math.log10(venn_threshold)
+else:
+    venn_threshold = None
+    venn_threshold_log = None
 
 print(f"GWAS significance level  : {significance_level}, -log10: {significance_level_log}")
 print(f"GWAS adjusted sign. level: {adjusted_threshold}, -log10: {adjusted_threshold_log}\n")
+print(f"Venn threshold           : {venn_threshold}, -log10: {venn_threshold_log}\n")
 
 # read GWAS result data
 if args.input:
@@ -997,3 +1106,8 @@ if args.input:
     if "box" in args.plot and args.only_common:
         # qqplot for multiple result data
         top_snp_boxplots(snp_genotype_volumes, figsize=figure_size, save_path=save_plot_path, number_of_top_snps=3)
+
+    if "venn" in args.plot:
+        # qqplot for multiple result data
+        venn_diagram(all_results, significance_threshold=venn_threshold_log,
+                     method_colors=gwas_method_colors, figsize=figure_size, save_path=save_plot_path)
