@@ -227,8 +227,10 @@ def plot_single_manhattan(gwas_method, df, df_grouped, colors, ax, y_orientation
         max_y = math.ceil(max_y)
 
         # plot line of significance level and adjusted significance level
-        ax.axhline(y=significance_level_log, color="red")
-        ax.axhline(y=adjusted_threshold_log, color="black")
+        if significance_level_log is not None:
+            ax.axhline(y=significance_level_log, color="red")
+        if adjusted_threshold_log is not None:
+            ax.axhline(y=adjusted_threshold_log, color="black")
 
     if y_orientation_up:
         ax.set_ylim([0, max_y])
@@ -296,10 +298,7 @@ def miami_plot(gwas_data1: dict, gwas_data2: dict,  figsize: tuple,
 
 def plot_venn_diagram(a: set, b: set, c: set, labels: list, title: str, save_path: str = None,):
 
-    # a = set(a)
-    # b = set(b)
-    # c = set(c)
-
+    # set operations: difference and intersections
     only_a = len(a - b - c)
     only_b = len(b - a - c)
     only_c = len(c - a - b)
@@ -463,6 +462,70 @@ def top_snp_boxplots(snp_genotype_volumes: dict, figsize: tuple, number_of_top_s
         if i == number_of_top_snps:
             break
 
+
+def compare_p(all_results: dict, figsize: tuple, save_path: str = None):
+    # compare p-values
+
+    all_pvalues_df = None
+
+    for single_result in all_results:
+
+        method_p_values = single_result["result_df"].copy()
+        method_p_values = method_p_values[["CHROM","POS","P_MINUS_LOG10"]]
+        method_p_values["method"] = single_result["method"]
+
+        if all_pvalues_df is None:
+            all_pvalues_df = method_p_values.copy()
+        else:
+            all_pvalues_df = pd.concat([all_pvalues_df, method_p_values])
+        pass
+
+    default_fontsize = 30
+    ax = plt.gca() # get Axes reference created by seaborn
+    ax.set_title("Comparison of -log10(p)", fontweight="bold", fontsize=default_fontsize)
+    ax.set_xlabel("GWAS method", fontsize=default_fontsize)
+    ax.set_ylabel("$-log_{10}(p)$", fontweight="bold", fontsize=default_fontsize)
+    ax.figure.set_figwidth(figsize[0])
+    ax.figure.set_figheight(figsize[1])
+
+    ax_boxplot = sns.boxplot(x="method", y="P_MINUS_LOG10", hue="CHROM", data=all_pvalues_df)
+
+    # save plot
+    if save_path:
+        png_file = save_path + "_pcomp_box.png"
+        ax.figure.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    # show plot
+    plt.show()
+
+    # show distribution of p-values
+    all_pvalues_df["P_MINUS_LOG10_ROUNDED"] = np.round(all_pvalues_df["P_MINUS_LOG10"])
+    all_pvalues_df = all_pvalues_df.astype({'P_MINUS_LOG10_ROUNDED': 'int'})
+    all_pvalues_grouped_df = all_pvalues_df.groupby(["method","P_MINUS_LOG10_ROUNDED"]).agg('count').reset_index()
+    all_pvalues_grouped_df = all_pvalues_grouped_df.drop(["CHROM", "POS"], axis=1)
+    all_pvalues_grouped_df.rename(columns={"P_MINUS_LOG10": "Count"}, inplace=True)
+
+    plt.clf()  # clear any previous figures
+    default_fontsize = 30
+    ax = plt.gca() # get Axes reference created by seaborn
+    ax.set_title("Comparison of -log10(p) counts", fontweight="bold", fontsize=default_fontsize)
+    ax.set_xlabel("$-log_{10}(p)$", fontsize=default_fontsize)
+    ax.set_ylabel("count", fontsize=default_fontsize)
+    ax.figure.set_figwidth(figsize[0])
+    ax.figure.set_figheight(figsize[1])
+
+    sns.barplot(data=all_pvalues_grouped_df, x="P_MINUS_LOG10_ROUNDED", y="Count", hue="method")
+
+    # save plot
+    if save_path:
+        png_file = save_path + "_pcomp_bar.png"
+        ax.figure.savefig(png_file)
+        print(f"{png_file} saved.")
+
+    plt.show()
+
+    pass
 
 def boxplot(snp_genotype_volumes: dict, figsize: tuple, snp: str, save_path: str = None):
 
@@ -951,7 +1014,7 @@ parser.add_argument('--outlier_threshold', action='store',
 parser.add_argument('--remove_outliers', action='store_true', default=False,
                     help='remove outliers')
 parser.add_argument('--plot', action='store', default=[], nargs='+',
-                    help='select plots of qq manh miami box venn')
+                    help='select plots of qq manh miami box venn pcomp')
 parser.add_argument('--only_common', action='store_true', default=False,
                     help='keep only common variants of all methods')
 parser.add_argument('--ntop', action='store', type=int, default=10,
@@ -1038,6 +1101,9 @@ if args.input:
             print(f"{method:10}: NAs: {number_na_found}, files: {files_found} " +
                   f"outlier: {number_outliers}, outlier removed: {number_outliers_removed}")
 
+            # add -log10(p) to the results
+            result_df['P_MINUS_LOG10'] = -np.log10(result_df["P"])
+
             single_result = dict()
             single_result["method"] = method
             single_result["result_df"] = result_df
@@ -1084,8 +1150,12 @@ figure_size = (18, 10)  # width, height
 if args.plot:
     plt.rc('font', size=16)          # controls default text sizes
 
-# create the plots: Manhattan, Miami and QQ
+# create the plots: Manhattan, Miami, QQ, Venn, boxplots
 if args.input:
+    if "pcomp" in args.plot:
+        # compare p-values
+        compare_p(all_results, figsize=figure_size, save_path=save_plot_path)
+
     if "manh" in args.plot:
         for single_result in all_results:
             manhattan_plot(single_result, method_colors=gwas_method_colors, figsize=figure_size,
